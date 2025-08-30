@@ -2,6 +2,7 @@
 
 use eframe::NativeOptions;
 mod app;
+mod comms;
 use app::App;
 
 
@@ -12,6 +13,7 @@ fn main() -> eframe::Result {
         .viewport
         .with_title("Sendme Egui")
         .with_resizable(true)
-        .with_inner_size([500., 600.]);
+        .with_inner_size([500., 600.])
+        .with_drag_and_drop(true); // So cool !!
     App::run(options)
 }

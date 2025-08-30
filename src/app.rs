@@ -1,10 +1,15 @@
 // The application egui front end
 
+use core::f32;
+
+use crate::comms::{Command, Event};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use eframe::NativeOptions;
 use eframe::egui;
+use egui::{Ui};
 use rfd;
+use tokio::time::{self, Duration};
 use tracing::{info, warn};
 
 pub struct App {
@@ -12,17 +17,41 @@ pub struct App {
     state: AppState,
 }
 
+#[derive(PartialEq)]
+enum AppMode {
+    Idle,
+    Send,
+    SendProgress,
+    Receive,
+    ReceiveProgess,
+}
+
+enum MessageType { 
+    Info,
+    Error,
+}
+
+enum MessageDisplay { 
+    Type(MessageType),
+    Text(String),
+}
+
 struct AppState {
     picked_path: Option<String>,
     worker: WorkerHandle,
-    message: Option<String>
+    message: Option<String>,
+    mode: AppMode,
+    receiver_ticket: String,
+    progress: f32,
+    progress_text: String,
+    messages: Vec<MessageDisplay>
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         if self.is_first_update {
             self.is_first_update = false;
-            ctx.set_zoom_factor(1.5);
+            ctx.set_zoom_factor(1.0);
             let ctx = ctx.clone();
             ctx.request_repaint();
         }
@@ -36,7 +65,12 @@ impl App {
         let state = AppState {
             picked_path: None,
             worker: handle,
-            message: None
+            message: None,
+            mode: AppMode::Idle,
+            receiver_ticket: String::new(),
+            progress: 0.,
+            progress_text: String::new(),
+            messages: Vec::new()
         };
         let app = App {
             is_first_update: true,
@@ -49,29 +83,117 @@ impl App {
 impl AppState {
     fn update(&mut self, ctx: &egui::Context) {
         // Events from the worker
-        while let Ok(event) = self.worker.event_rx.try_recv(){ 
+        while let Ok(event) = self.worker.event_rx.try_recv() {
             match event {
                 Event::Message(m) => self.message = Some(m),
-            }
-        }
-        egui::CentralPanel::default().show(ctx, |ui| {
-            if ui.button("Open file…").clicked() {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                    self.picked_path = Some(path.display().to_string());
+                Event::Progress((name, value)) => {
+                    self.progress = value;
+                    self.progress_text = name;
                 }
             }
-            if ui.button("Click").clicked(){
-                self.cmd(Command::Message("Hello".to_string()));
+        }
+        // active flags
+        let mut send_enabled: bool = true;
+        let mut receive_enabled: bool = true;
+        // Use the mode
+        match self.mode {
+            AppMode::Idle => {}
+            AppMode::Send => {
+                receive_enabled = false;
+            }
+            AppMode::Receive => {
+                send_enabled = false;
+            }
+            AppMode::SendProgress | AppMode::ReceiveProgess => {
+                receive_enabled = false;
+                send_enabled = false;
+            }
+        }
+        // The actual gui
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| ui.heading("Sendme Egui"));
+            ui.horizontal(|ui| {
+                let _ = ui.add_enabled_ui(send_enabled, |ui| {
+                    if ui.button("Send Folder…").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                            self.picked_path = Some(path.display().to_string());
+                        }
+                        self.mode = AppMode::Send;
+                    };
+                    if ui.button("Send File…").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().pick_file() {
+                            self.picked_path = Some(path.display().to_string());
+                        }
+                        self.mode = AppMode::Send;
+                    };
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let _ = ui.add_enabled_ui(receive_enabled, |ui| {
+                        if ui.button("Receive...").clicked() {
+                            self.mode = AppMode::Receive;
+                        }
+                    });
+                });
+            });
+            ui.separator();
+            // Show mode based widgets
+            match self.mode {
+                AppMode::Idle => {}
+                AppMode::Send => {
+                    if let Some(path) = &self.picked_path {
+                        self.cmd(Command::Send(path.to_owned()));
+                        self.mode = AppMode::SendProgress;
+                    }
+                }
+                AppMode::Receive => {
+                    let ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
+                        .desired_width(f32::INFINITY)
+                        .show(ui);
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("Fetch").clicked() {
+                                self.cmd(Command::Receive(self.receiver_ticket.clone()));
+                                self.mode = AppMode::ReceiveProgess;
+                            };
+                        });
+                    });
+                }
+                AppMode::SendProgress => {
+
+                }
+                AppMode::ReceiveProgess => {
+                    let progress_bar = egui::ProgressBar::new(self.progress)
+                        .text(&self.progress_text)
+                        .show_percentage()
+                        .animate(true);
+                    ui.add(progress_bar);
+                    // Add a list of the messages.
+                    self.show_message(ui);
+                    if self.progress == 1.0 {
+                        self.progress = 0.0;
+                        self.mode = AppMode::Idle;
+                    }
+                }
             }
             ui.separator();
+            if ui.button("Reset").clicked() {
+                self.cmd(Command::Message);
+                self.mode = AppMode::Idle;
+            }
             if let Some(path) = &self.picked_path {
                 let _ = ui.label(format!("{}", path));
             }
-            ui.separator();
-            if let Some(mes) = &self.message { 
-                ui.label(format!("{}",mes));
+            if let Some(mes) = &self.message {
+                ui.label(format!("{}", mes));
             }
         });
+    }
+
+    fn show_message(&mut self,ui: &mut Ui) { 
+        ui.label("asdfasdfasf");
+        for message in self.messages.iter() { 
+            ui.label("asdfasfdasf");
+        }
     }
 
     fn cmd(&self, command: Command) {
@@ -85,18 +207,6 @@ impl AppState {
 // --------------------------
 // Worker
 // --------------------------
-
-// Incoming events
-enum Event {
-    Message(String),
-}
-
-// Outgoing Commands
-#[derive(Debug)]
-enum Command {
-    Message(String),
-}
-
 struct Worker {
     command_rx: Receiver<Command>,
     event_tx: Sender<Event>,
@@ -154,11 +264,39 @@ impl Worker {
         loop {
             tokio::select! {
                 command = self.command_rx.recv() => {
+                    let command = command?;
                     info!("command {:?}",command);
-                    self.emit(Event::Message("from worker".to_string())).await?;
+                    if let Err(err ) = self.handle_command(command).await{
+                        warn!("command failed {err}");
+                    }
                 }
             }
         }
         Ok(())
+    }
+
+    async fn handle_command(&mut self, command: Command) -> Result<()> {
+        match command {
+            Command::Message => self.emit(Event::Message("hello".to_string())).await,
+            Command::Send(_) => {
+                return Ok(());
+            }
+            Command::Receive(mess) => {
+                const MAX: i32 = 100;
+                let mut ticker = time::interval(Duration::from_millis(50));
+                let mut counter = 0;
+                loop {
+                    counter += 1;
+                    ticker.tick().await;
+                    let value = (counter as f32) / (MAX as f32);
+                    let _ = self.emit(Event::Progress(("Fetching...".to_string(), value))).await;
+                    // info!("progress {}",value);
+                    if counter == MAX {
+                        return Ok(());
+                    }
+                }
+                return Ok(());
+            }
+        }
     }
 }
