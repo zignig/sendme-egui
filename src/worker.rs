@@ -79,7 +79,6 @@ impl Worker {
     // TODO rework sendme.
     async fn handle_command(&mut self, command: Command) -> Result<()> {
         match command {
-            Command::Message => self.emit(Event::Message("hello".to_string())).await,
             Command::Send(_) => {
                 let mut ticker = time::interval(Duration::from_millis(1000));
                 let actions = ["scan", "ingest", "present", "serve", "finish"];

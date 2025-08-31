@@ -8,7 +8,6 @@ pub enum Event {
 // Outgoing Commands
 #[derive(Debug)]
 pub enum Command {
-    Message,
     Send(String),
     Fetch(String),
 }

@@ -125,7 +125,6 @@ impl AppState {
 
             }
         }
-
         // The actual gui
         egui::CentralPanel::default().show(ctx, |ui| {
             // Main buttons
@@ -149,7 +148,7 @@ impl AppState {
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_enabled_ui(receive_enabled, |ui| {
-                        if ui.button("Receive...").clicked() {
+                        if ui.button("Fetch...").clicked() {
                             self.mode = AppMode::Fetch;
                         }
                     });
@@ -166,7 +165,7 @@ impl AppState {
                     }
                 }
                 AppMode::Fetch => {
-                    ui.label("Paste blob ticket.");
+                    ui.heading("Paste blob ticket.");
                     ui.add_space(8.);
                     let ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
                         .desired_width(f32::INFINITY)
