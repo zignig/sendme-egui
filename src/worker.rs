@@ -91,7 +91,8 @@ impl Worker {
                     counter += 1;
                     ticker.tick().await;
                     let value = (counter as f32) / (MAX as f32);
-                    let _ = self.emit(Event::Progress(("Fetching...".to_string(), value))).await;
+                    self.emit(Event::Progress(("Fetching...".to_string(), value))).await;
+                    self.emit(Event::Message(format!("counter {}",&value))).await;
                     // info!("progress {}",value);
                     if counter == MAX {
                         return Ok(());
