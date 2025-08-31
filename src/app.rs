@@ -25,6 +25,7 @@ enum AppMode {
     SendProgress,
     Fetch,
     FetchProgess,
+    Finished
 }
 
 struct AppState {
@@ -96,9 +97,10 @@ impl AppState {
                 Event::Progress((name, value)) => {
                     self.progress = value;
                     self.progress_text = name;
-                },
-                Event::Finished => { 
+                }
+                Event::Finished => {
                     // Reset state
+                    self.reset();
                 }
             }
         }
@@ -118,6 +120,9 @@ impl AppState {
             AppMode::SendProgress | AppMode::FetchProgess => {
                 receive_enabled = false;
                 send_enabled = false;
+            }
+            AppMode::Finished => {
+
             }
         }
 
@@ -195,6 +200,9 @@ impl AppState {
                         self.mode = AppMode::Idle;
                     }
                     ctx.request_repaint();
+                },
+                AppMode::Finished => { 
+                    self.reset();
                 }
             }
             // Show the current messages
@@ -202,9 +210,7 @@ impl AppState {
             // TODO ebug interface
             ui.separator();
             if ui.button("Reset").clicked() {
-                self.mode = AppMode::Idle;
-                self.receiver_ticket = "".to_string();
-                self.messages = Vec::new();
+                self.reset();
             }
             if let Some(path) = &self.picked_path {
                 let _ = ui.label(format!("{}", path));
@@ -212,6 +218,13 @@ impl AppState {
         });
     }
 
+    fn reset(&mut self) {
+        self.mode = AppMode::Idle;
+        self.receiver_ticket = "".to_string();
+        self.messages = Vec::new();
+    }
+
+    // Show the list of
     fn show_messages(&mut self, ui: &mut Ui) {
         ui.add_space(4.);
         for message in self.messages.iter() {

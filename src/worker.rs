@@ -87,7 +87,7 @@ impl Worker {
                     ticker.tick().await;
                     self.emit(Event::Message(act.to_string())).await;
                 }
-                self.emit(Event::Finished);
+                self.emit(Event::Finished).await;
                 return Ok(());
             }
             Command::Fetch(mess) => {
@@ -107,6 +107,7 @@ impl Worker {
                         .await;
                     // info!("progress {}",value);
                     if counter == MAX {
+                        self.emit(Event::Finished).await;
                         return Ok(());
                     }
                 }
