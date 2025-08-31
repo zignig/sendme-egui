@@ -3,6 +3,8 @@
 use eframe::NativeOptions;
 mod app;
 mod comms;
+mod worker;
+
 use app::App;
 
 

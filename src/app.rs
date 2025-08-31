@@ -3,14 +3,13 @@
 use core::f32;
 
 use crate::comms::{Command, Event};
+use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
-use async_channel::{Receiver, Sender};
 use eframe::NativeOptions;
 use eframe::egui;
-use egui::{Ui};
+use egui::Ui;
 use rfd;
-use tokio::time::{self, Duration};
-use tracing::{info, warn};
+// use tracing::{info, warn};
 
 pub struct App {
     is_first_update: bool,
@@ -26,14 +25,14 @@ enum AppMode {
     ReceiveProgess,
 }
 
-enum MessageType { 
+enum MessageType {
     Info,
     Error,
 }
 
-enum MessageDisplay { 
-    Type(MessageType),
-    Text(String),
+struct MessageDisplay {
+    text: String,
+    mtype: MessageType,
 }
 
 struct AppState {
@@ -44,7 +43,7 @@ struct AppState {
     receiver_ticket: String,
     progress: f32,
     progress_text: String,
-    messages: Vec<MessageDisplay>
+    messages: Vec<MessageDisplay>,
 }
 
 impl eframe::App for App {
@@ -70,7 +69,7 @@ impl App {
             receiver_ticket: String::new(),
             progress: 0.,
             progress_text: String::new(),
-            messages: Vec::new()
+            messages: Vec::new(),
         };
         let app = App {
             is_first_update: true,
@@ -109,11 +108,14 @@ impl AppState {
                 send_enabled = false;
             }
         }
+
         // The actual gui
         egui::CentralPanel::default().show(ctx, |ui| {
+            // Main buttons
             ui.vertical_centered(|ui| ui.heading("Sendme Egui"));
+            ui.add_space(5.);
             ui.horizontal(|ui| {
-                let _ = ui.add_enabled_ui(send_enabled, |ui| {
+                ui.add_enabled_ui(send_enabled, |ui| {
                     if ui.button("Send Folder…").clicked() {
                         if let Some(path) = rfd::FileDialog::new().pick_folder() {
                             self.picked_path = Some(path.display().to_string());
@@ -128,7 +130,7 @@ impl AppState {
                     };
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let _ = ui.add_enabled_ui(receive_enabled, |ui| {
+                    ui.add_enabled_ui(receive_enabled, |ui| {
                         if ui.button("Receive...").clicked() {
                             self.mode = AppMode::Receive;
                         }
@@ -150,16 +152,14 @@ impl AppState {
                         .desired_width(f32::INFINITY)
                         .show(ui);
                     ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Fetch").clicked() {
-                                self.cmd(Command::Receive(self.receiver_ticket.clone()));
-                                self.mode = AppMode::ReceiveProgess;
-                            };
-                        });
+                        if ui.button("Fetch").clicked() {
+                            self.cmd(Command::Receive(self.receiver_ticket.clone()));
+                            self.mode = AppMode::ReceiveProgess;
+                        };
                     });
                 }
                 AppMode::SendProgress => {
-
+                    ui.label("Put send status here");
                 }
                 AppMode::ReceiveProgess => {
                     let progress_bar = egui::ProgressBar::new(self.progress)
@@ -189,9 +189,9 @@ impl AppState {
         });
     }
 
-    fn show_message(&mut self,ui: &mut Ui) { 
+    fn show_message(&mut self, ui: &mut Ui) {
         ui.label("asdfasdfasf");
-        for message in self.messages.iter() { 
+        for message in self.messages.iter() {
             ui.label("asdfasfdasf");
         }
     }
@@ -201,102 +201,5 @@ impl AppState {
             .command_tx
             .send_blocking(command)
             .expect("Worker is not responding");
-    }
-}
-
-// --------------------------
-// Worker
-// --------------------------
-struct Worker {
-    command_rx: Receiver<Command>,
-    event_tx: Sender<Event>,
-    // TODO add worker state
-}
-
-struct WorkerHandle {
-    command_tx: Sender<Command>,
-    event_rx: Receiver<Event>,
-}
-
-impl Worker {
-    pub fn spawn() -> WorkerHandle {
-        let (command_tx, command_rx) = async_channel::bounded(16);
-        let (event_tx, event_rx) = async_channel::bounded(16);
-        let handle = WorkerHandle {
-            command_tx,
-            event_rx,
-        };
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_multi_thread()
-                .enable_all()
-                .build()
-                .expect("failedd to start tokio runtime");
-            rt.block_on(async move {
-                let mut worker = Worker::start(command_rx, event_tx)
-                    .await
-                    .expect("Worker failed to start");
-                if let Err(err) = worker.run().await {
-                    warn!("worker stopped with error {err:?}");
-                }
-            })
-        });
-        handle
-    }
-
-    async fn emit(&self, event: Event) -> Result<()> {
-        self.event_tx.send(event).await?;
-        Ok(())
-    }
-
-    async fn start(
-        command_rx: async_channel::Receiver<Command>,
-        event_tx: async_channel::Sender<Event>,
-    ) -> Result<Self> {
-        Ok(Self {
-            command_rx,
-            event_tx,
-        })
-    }
-
-    async fn run(&mut self) -> Result<()> {
-        // the actual runner for the worker
-        info!("Starting  the worker");
-        loop {
-            tokio::select! {
-                command = self.command_rx.recv() => {
-                    let command = command?;
-                    info!("command {:?}",command);
-                    if let Err(err ) = self.handle_command(command).await{
-                        warn!("command failed {err}");
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn handle_command(&mut self, command: Command) -> Result<()> {
-        match command {
-            Command::Message => self.emit(Event::Message("hello".to_string())).await,
-            Command::Send(_) => {
-                return Ok(());
-            }
-            Command::Receive(mess) => {
-                const MAX: i32 = 100;
-                let mut ticker = time::interval(Duration::from_millis(50));
-                let mut counter = 0;
-                loop {
-                    counter += 1;
-                    ticker.tick().await;
-                    let value = (counter as f32) / (MAX as f32);
-                    let _ = self.emit(Event::Progress(("Fetching...".to_string(), value))).await;
-                    // info!("progress {}",value);
-                    if counter == MAX {
-                        return Ok(());
-                    }
-                }
-                return Ok(());
-            }
-        }
     }
 }

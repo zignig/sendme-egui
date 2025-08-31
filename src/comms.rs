@@ -11,3 +11,6 @@ pub enum Command {
     Send(String),
     Receive(String),
 }
+
+
+// Progress bar works
