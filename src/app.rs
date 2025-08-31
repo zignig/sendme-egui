@@ -165,7 +165,7 @@ impl AppState {
                     }
                 }
                 AppMode::Fetch => {
-                    ui.heading("Paste blob ticket.");
+                    ui.label("Blob ticket.");
                     ui.add_space(8.);
                     let ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
                         .desired_width(f32::INFINITY)
