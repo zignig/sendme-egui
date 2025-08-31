@@ -1,7 +1,10 @@
+#![windows_subsystem = "windows"]
+
 // Egui interface for sendme.
 mod app;
 mod comms;
 mod worker;
+mod sendme;
 
 use app::App;
 use eframe::NativeOptions;
