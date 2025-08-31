@@ -76,6 +76,8 @@ impl Worker {
         }
     }
 
+    // This is currently mocked
+    // TODO rework sendme.
     async fn handle_command(&mut self, command: Command) -> Result<()> {
         match command {
             Command::Message => self.emit(Event::Message("hello".to_string())).await,

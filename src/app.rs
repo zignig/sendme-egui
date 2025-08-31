@@ -29,7 +29,6 @@ enum AppMode {
 struct AppState {
     picked_path: Option<String>,
     worker: WorkerHandle,
-    message: Option<String>,
     mode: AppMode,
     receiver_ticket: String,
     progress: f32,
@@ -41,7 +40,7 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         if self.is_first_update {
             self.is_first_update = false;
-            ctx.set_zoom_factor(1.0);
+            ctx.set_zoom_factor(1.);
             let ctx = ctx.clone();
             ctx.request_repaint();
         }
@@ -55,7 +54,6 @@ impl App {
         let mut state = AppState {
             picked_path: None,
             worker: handle,
-            message: None,
             mode: AppMode::Idle,
             receiver_ticket: String::new(),
             progress: 0.,
@@ -79,6 +77,7 @@ impl App {
     }
 }
 
+// Actual gui code
 impl AppState {
     fn update(&mut self, ctx: &egui::Context) {
         // Events from the worker
@@ -99,6 +98,7 @@ impl AppState {
                 }
             }
         }
+
         // active flags
         let mut send_enabled: bool = true;
         let mut receive_enabled: bool = true;
@@ -120,7 +120,8 @@ impl AppState {
         // The actual gui
         egui::CentralPanel::default().show(ctx, |ui| {
             // Main buttons
-            ui.vertical_centered(|ui| ui.heading("Sendme Egui"));
+            ui.vertical_centered(|ui| ui.heading("Sendme"));
+            ui.separator();
             ui.add_space(5.);
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(send_enabled, |ui| {
@@ -156,11 +157,20 @@ impl AppState {
                     }
                 }
                 AppMode::Receive => {
+                    ui.label("Paste blob ticket.");
+                    ui.add_space(8.);
                     let ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
                         .desired_width(f32::INFINITY)
                         .show(ui);
                     ui.horizontal(|ui| {
                         if ui.button("Fetch").clicked() {
+                            self.cmd(Command::Receive(self.receiver_ticket.clone()));
+                            self.mode = AppMode::ReceiveProgess;
+                        };
+                        if ui.button("Fetch Into...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                self.picked_path = Some(path.display().to_string());
+                            }
                             self.cmd(Command::Receive(self.receiver_ticket.clone()));
                             self.mode = AppMode::ReceiveProgess;
                         };
@@ -187,12 +197,10 @@ impl AppState {
             if ui.button("Reset").clicked() {
                 self.cmd(Command::Message);
                 self.mode = AppMode::Idle;
+                self.receiver_ticket = "".to_string();
             }
             if let Some(path) = &self.picked_path {
                 let _ = ui.label(format!("{}", path));
-            }
-            if let Some(mes) = &self.message {
-                ui.label(format!("{}", mes));
             }
         });
     }
