@@ -4,10 +4,9 @@
 
 use crate::comms::{Command, Event};
 use anyhow::Result;
-use tokio::time::{self, Duration};
 use async_channel::{Receiver, Sender};
+use tokio::time::{self, Duration};
 use tracing::{info, warn};
-
 
 pub struct Worker {
     pub command_rx: Receiver<Command>,
@@ -82,19 +81,30 @@ impl Worker {
         match command {
             Command::Message => self.emit(Event::Message("hello".to_string())).await,
             Command::Send(_) => {
+                let mut ticker = time::interval(Duration::from_millis(1000));
+                let actions = ["scan", "ingest", "present", "serve", "finish"];
+                for act in actions.iter() {
+                    ticker.tick().await;
+                    self.emit(Event::Message(act.to_string())).await;
+                }
+                self.emit(Event::Finished);
                 return Ok(());
             }
-            Command::Receive(mess) => {
+            Command::Fetch(mess) => {
                 const MAX: i32 = 100;
                 let mut ticker = time::interval(Duration::from_millis(50));
                 let mut counter = 0;
-                info!("{}",mess);
+                info!("{}", mess);
                 loop {
                     counter += 1;
                     ticker.tick().await;
                     let value = (counter as f32) / (MAX as f32);
-                    self.emit(Event::Progress(("Fetching...".to_string(), value))).await;
-                    self.emit(Event::Message(format!("counter {}",&value))).await;
+                    let _ = self
+                        .emit(Event::Progress(("Fetching...".to_string(), value)))
+                        .await;
+                    let _ = self
+                        .emit(Event::Message(format!("counter {}", &value)))
+                        .await;
                     // info!("progress {}",value);
                     if counter == MAX {
                         return Ok(());

@@ -1,6 +1,7 @@
 // The application egui front end
 
 use core::f32;
+use std::f64::consts::E;
 use std::mem;
 
 use crate::comms::{Command, Event};
@@ -22,8 +23,8 @@ enum AppMode {
     Idle,
     Send,
     SendProgress,
-    Receive,
-    ReceiveProgess,
+    Fetch,
+    FetchProgess,
 }
 
 struct AppState {
@@ -95,6 +96,9 @@ impl AppState {
                 Event::Progress((name, value)) => {
                     self.progress = value;
                     self.progress_text = name;
+                },
+                Event::Finished => { 
+                    // Reset state
                 }
             }
         }
@@ -108,10 +112,10 @@ impl AppState {
             AppMode::Send => {
                 receive_enabled = false;
             }
-            AppMode::Receive => {
+            AppMode::Fetch => {
                 send_enabled = false;
             }
-            AppMode::SendProgress | AppMode::ReceiveProgess => {
+            AppMode::SendProgress | AppMode::FetchProgess => {
                 receive_enabled = false;
                 send_enabled = false;
             }
@@ -141,7 +145,7 @@ impl AppState {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.add_enabled_ui(receive_enabled, |ui| {
                         if ui.button("Receive...").clicked() {
-                            self.mode = AppMode::Receive;
+                            self.mode = AppMode::Fetch;
                         }
                     });
                 });
@@ -156,7 +160,7 @@ impl AppState {
                         self.mode = AppMode::SendProgress;
                     }
                 }
-                AppMode::Receive => {
+                AppMode::Fetch => {
                     ui.label("Paste blob ticket.");
                     ui.add_space(8.);
                     let ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
@@ -164,28 +168,28 @@ impl AppState {
                         .show(ui);
                     ui.horizontal(|ui| {
                         if ui.button("Fetch").clicked() {
-                            self.cmd(Command::Receive(self.receiver_ticket.clone()));
-                            self.mode = AppMode::ReceiveProgess;
+                            self.cmd(Command::Fetch(self.receiver_ticket.clone()));
+                            self.mode = AppMode::FetchProgess;
                         };
                         if ui.button("Fetch Into...").clicked() {
                             if let Some(path) = rfd::FileDialog::new().pick_folder() {
                                 self.picked_path = Some(path.display().to_string());
                             }
-                            self.cmd(Command::Receive(self.receiver_ticket.clone()));
-                            self.mode = AppMode::ReceiveProgess;
+                            self.cmd(Command::Fetch(self.receiver_ticket.clone()));
+                            self.mode = AppMode::FetchProgess;
                         };
                     });
                 }
                 AppMode::SendProgress => {
-                    ui.label("Put send status here");
+                    ui.label("Sending");
+                    ctx.request_repaint();
                 }
-                AppMode::ReceiveProgess => {
+                AppMode::FetchProgess => {
                     let progress_bar = egui::ProgressBar::new(self.progress)
                         .text(&self.progress_text)
                         .show_percentage();
                     ui.add(progress_bar);
                     // Add a list of the messages.
-                    self.show_message(ui);
                     if self.progress == 1.0 {
                         self.progress = 0.0;
                         self.mode = AppMode::Idle;
@@ -193,11 +197,14 @@ impl AppState {
                     ctx.request_repaint();
                 }
             }
+            // Show the current messages
+            self.show_messages(ui);
+            // TODO ebug interface
             ui.separator();
             if ui.button("Reset").clicked() {
-                self.cmd(Command::Message);
                 self.mode = AppMode::Idle;
                 self.receiver_ticket = "".to_string();
+                self.messages = Vec::new();
             }
             if let Some(path) = &self.picked_path {
                 let _ = ui.label(format!("{}", path));
@@ -205,7 +212,7 @@ impl AppState {
         });
     }
 
-    fn show_message(&mut self, ui: &mut Ui) {
+    fn show_messages(&mut self, ui: &mut Ui) {
         ui.add_space(4.);
         for message in self.messages.iter() {
             message.show(ui);

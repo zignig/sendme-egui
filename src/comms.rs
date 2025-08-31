@@ -2,6 +2,7 @@
 pub enum Event {
     Message(String),
     Progress((String, f32)),
+    Finished
 }
 
 // Outgoing Commands
@@ -9,8 +10,7 @@ pub enum Event {
 pub enum Command {
     Message,
     Send(String),
-    Receive(String),
+    Fetch(String),
 }
-
 
 // Progress bar works
