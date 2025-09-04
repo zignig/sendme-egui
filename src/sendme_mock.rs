@@ -42,7 +42,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
         ticker.tick().await;
         mess.progress("Downloading", counter, MAX).await?;
         if counter == MAX {
-            mess.finished().await?;
+            // mess.finished().await?;
             return Ok(());
         }
     }

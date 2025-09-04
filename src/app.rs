@@ -240,10 +240,6 @@ impl AppState {
             if ui.button("Reset").clicked() {
                 self.reset();
             }
-            // Display the selected path
-            if let Some(path) = &self.picked_path {
-                let _ = ui.label(format!("{}", path));
-            }
         });
     }
 
