@@ -2,6 +2,8 @@
 mod app;
 mod comms;
 mod worker;
+mod sendme_mock;
+// mod sendme;
 
 use app::App;
 use eframe::NativeOptions;

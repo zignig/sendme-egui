@@ -2,16 +2,19 @@
 // Worker
 // --------------------------
 
-use crate::comms::{Command, Event};
+use crate::comms::{Command, Event, MessageOut};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use tokio::time::{self, Duration};
 use tracing::{info, warn};
 
+use crate::sendme_mock::{send};
+
 pub struct Worker {
     pub command_rx: Receiver<Command>,
     pub event_tx: Sender<Event>,
     // TODO add worker state
+    pub mess: MessageOut,
 }
 
 pub struct WorkerHandle {
@@ -44,18 +47,15 @@ impl Worker {
         handle
     }
 
-    async fn emit(&self, event: Event) -> Result<()> {
-        self.event_tx.send(event).await?;
-        Ok(())
-    }
-
     async fn start(
         command_rx: async_channel::Receiver<Command>,
         event_tx: async_channel::Sender<Event>,
     ) -> Result<Self> {
+        let ev_tx_clone = event_tx.clone();
         Ok(Self {
             command_rx,
             event_tx,
+            mess: MessageOut::new(ev_tx_clone),
         })
     }
 
@@ -68,6 +68,7 @@ impl Worker {
                     let command = command?;
                     info!("command {:?}",command);
                     if let Err(err ) = self.handle_command(command).await{
+                        self.mess.error(format!("Error : {}",err).as_str()).await?;
                         warn!("command failed {err}");
                     }
                 }
@@ -79,37 +80,36 @@ impl Worker {
     // TODO rework sendme.
     async fn handle_command(&mut self, command: Command) -> Result<()> {
         match command {
-            Command::Send(_) => {
-                let mut ticker = time::interval(Duration::from_millis(1000));
-                let actions = ["scan", "ingest", "present", "serve", "finish"];
-                for act in actions.iter() {
-                    ticker.tick().await;
-                    self.emit(Event::Message(act.to_string())).await;
-                }
-                self.emit(Event::Finished).await;
+            Command::Setup => {
+                self.mess.correct("correct").await?;
+                self.mess.info("info").await?;
+                self.mess.error("error").await?;
                 return Ok(());
             }
-            Command::Fetch(mess) => {
+            Command::Send(path) => {
+                send(path,self.mess.clone()).await?;
+                return Ok(());
+            }
+            Command::Fetch(ticket) => {
+                self.mess.info("info test").await?;
                 const MAX: i32 = 100;
-                let mut ticker = time::interval(Duration::from_millis(50));
+                let mut ticker = time::interval(Duration::from_millis(20));
                 let mut counter = 0;
-                info!("{}", mess);
+                info!("{}", ticket);
                 loop {
                     counter += 1;
                     ticker.tick().await;
                     let value = (counter as f32) / (MAX as f32);
-                    let _ = self
-                        .emit(Event::Progress(("Fetching...".to_string(), value)))
-                        .await;
-                    let _ = self
-                        .emit(Event::Message(format!("counter {}", &value)))
-                        .await;
-                    // info!("progress {}",value);
+                    self.mess
+                        .info(format!("counter {}", value).as_str())
+                        .await?;
                     if counter == MAX {
-                        self.emit(Event::Finished).await;
+                        self.mess.finished().await?;
                         return Ok(());
                     }
                 }
+                
+                self.mess.correct("finished").await?;
             }
         }
     }

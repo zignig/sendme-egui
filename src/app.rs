@@ -1,33 +1,35 @@
 // The application egui front end
 
 use core::f32;
-use std::f64::consts::E;
-use std::mem;
 
-use crate::comms::{Command, Event};
+use crate::comms::{Command, Event, MessageDisplay};
 use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
 use eframe::NativeOptions;
 use eframe::egui;
 use egui::{Color32, RichText, Ui};
 use rfd;
-// use tracing::{info, warn};
 
+const MESSAGE_MAX: usize = 10;
+// The application
 pub struct App {
     is_first_update: bool,
     state: AppState,
 }
 
+// The application mode
 #[derive(PartialEq)]
 enum AppMode {
+    Init,
     Idle,
     Send,
     SendProgress,
     Fetch,
     FetchProgess,
-    Finished
+    Finished,
 }
 
+// Internal state for the application
 struct AppState {
     picked_path: Option<String>,
     worker: WorkerHandle,
@@ -38,6 +40,7 @@ struct AppState {
     messages: Vec<MessageDisplay>,
 }
 
+// Make the egui impl for display
 impl eframe::App for App {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         if self.is_first_update {
@@ -50,6 +53,7 @@ impl eframe::App for App {
     }
 }
 
+// The application runner start,draw, etc...
 impl App {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
         let handle = Worker::spawn();
@@ -62,19 +66,11 @@ impl App {
             progress_text: String::new(),
             messages: Vec::new(),
         };
-        // TODO remove testing
-        state.messages.push(MessageDisplay {
-            text: "info".to_string(),
-            mtype: MessageType::Info,
-        });
-        state.messages.push(MessageDisplay {
-            text: "error".to_string(),
-            mtype: MessageType::Error,
-        });
         let app = App {
             is_first_update: true,
             state,
         };
+
         eframe::run_native("sendme-egui", options, Box::new(|_cc| Ok(Box::new(app))))
     }
 }
@@ -84,15 +80,14 @@ impl AppState {
     fn update(&mut self, ctx: &egui::Context) {
         // Events from the worker
         while let Ok(event) = self.worker.event_rx.try_recv() {
+            // Event probably needs a repaint
+            ctx.request_repaint();
             match event {
                 Event::Message(m) => {
-                    if self.messages.len() > 10 {
+                    if self.messages.len() > MESSAGE_MAX {
                         let _ = self.messages.remove(0);
                     }
-                    self.messages.push(MessageDisplay {
-                        text: m,
-                        mtype: MessageType::Info,
-                    });
+                    self.messages.push(m);
                 }
                 Event::Progress((name, value)) => {
                     self.progress = value;
@@ -110,6 +105,9 @@ impl AppState {
         let mut receive_enabled: bool = true;
         // Use the mode
         match self.mode {
+            AppMode::Init => {
+                self.cmd(Command::Setup);
+            }
             AppMode::Idle => {}
             AppMode::Send => {
                 receive_enabled = false;
@@ -121,9 +119,7 @@ impl AppState {
                 receive_enabled = false;
                 send_enabled = false;
             }
-            AppMode::Finished => {
-
-            }
+            AppMode::Finished => {}
         }
         // The actual gui
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -157,6 +153,7 @@ impl AppState {
             ui.separator();
             // Show mode based widgets
             match self.mode {
+                AppMode::Init => {}
                 AppMode::Idle => {}
                 AppMode::Send => {
                     if let Some(path) = &self.picked_path {
@@ -186,7 +183,6 @@ impl AppState {
                 }
                 AppMode::SendProgress => {
                     ui.label("Sending");
-                    ctx.request_repaint();
                 }
                 AppMode::FetchProgess => {
                     let progress_bar = egui::ProgressBar::new(self.progress)
@@ -198,9 +194,8 @@ impl AppState {
                         self.progress = 0.0;
                         self.mode = AppMode::Idle;
                     }
-                    ctx.request_repaint();
-                },
-                AppMode::Finished => { 
+                }
+                AppMode::Finished => {
                     self.reset();
                 }
             }
@@ -211,6 +206,7 @@ impl AppState {
             if ui.button("Reset").clicked() {
                 self.reset();
             }
+            // Display the selected path
             if let Some(path) = &self.picked_path {
                 let _ = ui.label(format!("{}", path));
             }
@@ -226,10 +222,12 @@ impl AppState {
     // Show the list of
     fn show_messages(&mut self, ui: &mut Ui) {
         ui.add_space(4.);
-        for message in self.messages.iter() {
-            message.show(ui);
-            ui.add_space(4.);
-        }
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for message in self.messages.iter() {
+                message.show(ui);
+                ui.add_space(4.);
+            }
+        });
     }
 
     fn cmd(&self, command: Command) {
@@ -241,29 +239,3 @@ impl AppState {
 }
 
 // Some formatting for messages
-enum MessageType {
-    Info,
-    Error,
-}
-
-struct MessageDisplay {
-    text: String,
-    mtype: MessageType,
-}
-
-impl MessageDisplay {
-    fn show(&self, ui: &mut Ui) {
-        match self.mtype {
-            MessageType::Info => {
-                let m = egui::RichText::new(&self.text).family(egui::FontFamily::Monospace);
-                ui.label(m);
-            }
-            MessageType::Error => {
-                let m = egui::RichText::new(&self.text)
-                    .color(Color32::LIGHT_RED)
-                    .family(egui::FontFamily::Monospace);
-                ui.label(m);
-            }
-        }
-    }
-}
