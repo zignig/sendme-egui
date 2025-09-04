@@ -6,10 +6,13 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.99"
 async-channel = "2.5.0"
+confy = "1.0.0"
 eframe = "0.32.1"
 iroh = "0.91.2"
 iroh-blobs = "0.93.0"
 rfd = "0.15.4"
+serde = "1.0.219"
+serde_derive = "1.0.219"
 time = "0.3.41"
 tokio = { version = "1.47.1", features = ["macros", "rt", "sync", "rt-multi-thread", "default", "time"] }
 tracing = "0.1.41"

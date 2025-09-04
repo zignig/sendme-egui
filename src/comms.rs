@@ -1,4 +1,5 @@
 // Comms between the gui and  the worker in it's own module.
+// Some of this lives on both sides ( be careful )
 
 use anyhow::Result;
 use async_channel::Sender;
@@ -9,7 +10,7 @@ use egui::{Color32, Ui};
 #[derive(Clone)]
 pub enum Event {
     Message(MessageDisplay),
-    Progress((String, f32)),
+    Progress((String, usize, usize)),
     Finished,
 }
 
@@ -21,7 +22,7 @@ pub enum Command {
     Fetch(String),
 }
 
-// nessage types
+// Message types
 #[derive(Clone)]
 
 enum MessageType {
@@ -30,6 +31,7 @@ enum MessageType {
     Error,
 }
 
+// egui display struct
 #[derive(Clone)]
 pub struct MessageDisplay {
     text: String,
@@ -77,13 +79,22 @@ impl MessageOut {
             .await?;
         Ok(())
     }
-    
+
     pub async fn finished(&self) -> Result<()> {
         self.event_tx
             .send(Event::Message(MessageDisplay {
                 text: "finished...".to_string(),
                 mtype: MessageType::Good,
             }))
+            .await?;
+        self.event_tx.send(Event::Finished).await?;
+        Ok(())
+    }
+
+    pub async fn progress(&self, name: &str, current: usize, total: usize) -> Result<()> {
+        // info!("progress {} / {} ",current,total);
+        self.event_tx
+            .send(Event::Progress((name.to_string(), current, total)))
             .await?;
         Ok(())
     }
@@ -95,7 +106,7 @@ impl MessageDisplay {
         match self.mtype {
             MessageType::Good => {
                 let m = egui::RichText::new(&self.text)
-                    .color(Color32::GREEN)
+                    .color(Color32::LIGHT_GREEN)
                     .family(egui::FontFamily::Monospace);
                 ui.label(m);
             }

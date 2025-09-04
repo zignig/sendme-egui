@@ -6,11 +6,29 @@ use crate::comms::{Command, Event, MessageDisplay};
 use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
 use eframe::NativeOptions;
-use eframe::egui;
-use egui::{Color32, RichText, Ui};
+use eframe::egui::{self, Visuals};
+use egui::Ui;
 use rfd;
+use serde_derive::{Deserialize, Serialize};
+use tracing::info;
 
-const MESSAGE_MAX: usize = 10;
+// Application saved config
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Config {
+    dark_mode: bool,
+}
+
+impl Default for Config { 
+    fn default() -> Self{ 
+        Self{ 
+            dark_mode: true
+        }
+    }
+}
+
+// Message list max 
+const MESSAGE_MAX: usize = 100;
+
 // The application
 pub struct App {
     is_first_update: bool,
@@ -35,9 +53,11 @@ struct AppState {
     worker: WorkerHandle,
     mode: AppMode,
     receiver_ticket: String,
-    progress: f32,
+    progress_current: usize,
+    progress_total: usize,
     progress_text: String,
     messages: Vec<MessageDisplay>,
+    config: Config,
 }
 
 // Make the egui impl for display
@@ -46,6 +66,9 @@ impl eframe::App for App {
         if self.is_first_update {
             self.is_first_update = false;
             ctx.set_zoom_factor(1.);
+            if !self.state.config.dark_mode {
+                ctx.set_visuals(Visuals::light());
+            };
             let ctx = ctx.clone();
             ctx.request_repaint();
         }
@@ -54,23 +77,30 @@ impl eframe::App for App {
 }
 
 // The application runner start,draw, etc...
+// Spawns the worker as a subthread
 impl App {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
         let handle = Worker::spawn();
-        let mut state = AppState {
+        // Load the config 
+        let config = confy::load("sendme-egui", None).unwrap_or_default();
+        let path = confy::get_configuration_file_path("sendme-egui",None);
+        info!("config path {:?}",path);
+        let state = AppState {
             picked_path: None,
             worker: handle,
-            mode: AppMode::Idle,
+            mode: AppMode::Init,
             receiver_ticket: String::new(),
-            progress: 0.,
+            progress_current: 0,
+            progress_total: 0,
             progress_text: String::new(),
             messages: Vec::new(),
+            config: config,
         };
         let app = App {
             is_first_update: true,
             state,
         };
-
+        // Rus the egui in the foreground
         eframe::run_native("sendme-egui", options, Box::new(|_cc| Ok(Box::new(app))))
     }
 }
@@ -89,9 +119,10 @@ impl AppState {
                     }
                     self.messages.push(m);
                 }
-                Event::Progress((name, value)) => {
-                    self.progress = value;
+                Event::Progress((name, current, total)) => {
                     self.progress_text = name;
+                    self.progress_current = current;
+                    self.progress_total = total;
                 }
                 Event::Finished => {
                     // Reset state
@@ -107,6 +138,7 @@ impl AppState {
         match self.mode {
             AppMode::Init => {
                 self.cmd(Command::Setup);
+                self.mode = AppMode::Idle;
             }
             AppMode::Idle => {}
             AppMode::Send => {
@@ -164,7 +196,7 @@ impl AppState {
                 AppMode::Fetch => {
                     ui.label("Blob ticket.");
                     ui.add_space(8.);
-                    let ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
+                    let _ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
                         .desired_width(f32::INFINITY)
                         .show(ui);
                     ui.horizontal(|ui| {
@@ -185,13 +217,15 @@ impl AppState {
                     ui.label("Sending");
                 }
                 AppMode::FetchProgess => {
-                    let progress_bar = egui::ProgressBar::new(self.progress)
+                    let prog_val = (self.progress_current as f32) / (self.progress_total as f32);
+                    let progress_bar = egui::ProgressBar::new(prog_val)
                         .text(&self.progress_text)
                         .show_percentage();
                     ui.add(progress_bar);
                     // Add a list of the messages.
-                    if self.progress == 1.0 {
-                        self.progress = 0.0;
+                    if prog_val == 1.0 {
+                        self.progress_current = 0;
+                        self.progress_total = 0;
                         self.mode = AppMode::Idle;
                     }
                 }
@@ -222,12 +256,14 @@ impl AppState {
     // Show the list of
     fn show_messages(&mut self, ui: &mut Ui) {
         ui.add_space(4.);
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for message in self.messages.iter() {
-                message.show(ui);
-                ui.add_space(4.);
-            }
-        });
+        egui::ScrollArea::vertical()
+            .max_height(100.)
+            .show(ui, |ui| {
+                for message in self.messages.iter() {
+                    message.show(ui);
+                    ui.add_space(4.);
+                }
+            });
     }
 
     fn cmd(&self, command: Command) {
@@ -237,5 +273,3 @@ impl AppState {
             .expect("Worker is not responding");
     }
 }
-
-// Some formatting for messages
