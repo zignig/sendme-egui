@@ -8,7 +8,7 @@ use async_channel::{Receiver, Sender};
 use tokio::time::{self, Duration};
 use tracing::{info, warn};
 
-use crate::sendme_mock::{send};
+use crate::sendme_mock::{send,receive};
 
 pub struct Worker {
     pub command_rx: Receiver<Command>,
@@ -91,25 +91,25 @@ impl Worker {
                 return Ok(());
             }
             Command::Fetch(ticket) => {
-                self.mess.info("info test").await?;
-                const MAX: i32 = 100;
-                let mut ticker = time::interval(Duration::from_millis(20));
-                let mut counter = 0;
-                info!("{}", ticket);
-                loop {
-                    counter += 1;
-                    ticker.tick().await;
-                    let value = (counter as f32) / (MAX as f32);
-                    self.mess
-                        .info(format!("counter {}", value).as_str())
-                        .await?;
-                    if counter == MAX {
-                        self.mess.finished().await?;
-                        return Ok(());
-                    }
-                }
-                
-                self.mess.correct("finished").await?;
+                // self.mess.info("info test").await?;
+                // const MAX: i32 = 100;
+                // let mut ticker = time::interval(Duration::from_millis(20));
+                // let mut counter = 0;
+                // info!("{}", ticket);
+                // loop {
+                //     counter += 1;
+                //     ticker.tick().await;
+                //     let value = (counter as f32) / (MAX as f32);
+                //     self.mess
+                //         .info(format!("counter {}", value).as_str())
+                //         .await?;
+                //     if counter == MAX {
+                //         self.mess.finished().await?;
+                //         return Ok(());
+                //     }
+                // }
+                receive(ticket,self.mess.clone());
+                // self.mess.correct("finished").await?;
             }
         }
     }
