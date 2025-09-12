@@ -2,6 +2,7 @@
 //! Command line arguments.
 
 // Lifted from https://github.com/n0-computer/sendme/commit/519ef0cfb1e1b95a275811144b28af26711d95e0
+// This  will be stripped out into the transport module 
 
 use std::{
     collections::BTreeMap,
@@ -968,29 +969,29 @@ fn show_get_error(e: GetError) -> GetError {
 }
 
 async fn receive(args: ReceiveArgs) -> anyhow::Result<()> {
-    let ticket = args.ticket;
-    let addr = ticket.node_addr().clone();
-    let secret_key = get_or_create_secret(args.common.verbose > 0)?;
-    let mut builder = Endpoint::builder()
-        .alpns(vec![])
-        .secret_key(secret_key)
-        .relay_mode(args.common.relay.into());
+    // let ticket = args.ticket;
+    // let addr = ticket.node_addr().clone();
+    // let secret_key = get_or_create_secret(args.common.verbose > 0)?;
+    // let mut builder = Endpoint::builder()
+    //     .alpns(vec![])
+    //     .secret_key(secret_key)
+    //     .relay_mode(args.common.relay.into());
 
-    if ticket.node_addr().relay_url.is_none() && ticket.node_addr().direct_addresses.is_empty() {
-        builder = builder.add_discovery(DnsDiscovery::n0_dns());
-    }
-    if let Some(addr) = args.common.magic_ipv4_addr {
-        builder = builder.bind_addr_v4(addr);
-    }
-    if let Some(addr) = args.common.magic_ipv6_addr {
-        builder = builder.bind_addr_v6(addr);
-    }
-    let endpoint = builder.bind().await?;
-    let dir_name = format!(".sendme-recv-{}", ticket.hash().to_hex());
-    let iroh_data_dir = std::env::current_dir()?.join(dir_name);
-    let db = iroh_blobs::store::fs::FsStore::load(&iroh_data_dir).await?;
-    let db2 = db.clone();
-    trace!("load done!");
+    // if ticket.node_addr().relay_url.is_none() && ticket.node_addr().direct_addresses.is_empty() {
+    //     builder = builder.add_discovery(DnsDiscovery::n0_dns());
+    // }
+    // if let Some(addr) = args.common.magic_ipv4_addr {
+    //     builder = builder.bind_addr_v4(addr);
+    // }
+    // if let Some(addr) = args.common.magic_ipv6_addr {
+    //     builder = builder.bind_addr_v6(addr);
+    // }
+    // let endpoint = builder.bind().await?;
+    // let dir_name = format!(".sendme-recv-{}", ticket.hash().to_hex());
+    // let iroh_data_dir = std::env::current_dir()?.join(dir_name);
+    // let db = iroh_blobs::store::fs::FsStore::load(&iroh_data_dir).await?;
+    // let db2 = db.clone();
+    // trace!("load done!");
     let fut = async move {
         trace!("running");
         let mut mp: MultiProgress = MultiProgress::new();
