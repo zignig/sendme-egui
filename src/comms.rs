@@ -24,7 +24,6 @@ pub enum Command {
 
 // Message types
 #[derive(Clone)]
-
 enum MessageType {
     Good,
     Info,
@@ -123,3 +122,6 @@ impl MessageDisplay {
         }
     }
 }
+
+// Progress Bar
+// 

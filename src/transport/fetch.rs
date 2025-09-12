@@ -1,27 +1,11 @@
-// A mockup of the probable sendme interface
-// with a view to convert original sendme to this egui
 
-use crate::comms::MessageOut;
 use anyhow::Result;
 use anyhow::anyhow;
+use crate::comms::MessageOut;
+pub use tokio::time::{self, Duration};
 use iroh_blobs::ticket::BlobTicket;
-use std::path::PathBuf;
 use std::str::FromStr;
-use tokio::time::{self, Duration};
 use tracing::info;
-use walkdir::WalkDir;
-
-// Mock of offser folder in iroh-blobs
-pub async fn send(path_string: String, mess: MessageOut) -> Result<()> {
-    let path = PathBuf::from(path_string);
-    let files = WalkDir::new(path.clone()).into_iter();
-    for file in files {
-        if let Ok(file) = file {
-            mess.info(format!("{:?}", file.path()).as_str()).await?;
-        };
-    }
-    Err(anyhow!("Send Fail"))
-}
 
 // fetch a blob from the iroh network
 pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {

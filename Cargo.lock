@@ -4989,6 +4989,7 @@ dependencies = [
  "anyhow",
  "async-channel",
  "confy",
+ "directories",
  "eframe",
  "iroh",
  "iroh-blobs",
