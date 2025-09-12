@@ -2,7 +2,9 @@ use crate::comms::MessageOut;
 use anyhow::Result;
 use anyhow::anyhow;
 use directories::BaseDirs;
+use iroh_blobs::api::Store;
 use iroh_blobs::api::remote::GetProgressItem;
+use iroh_blobs::format::collection::Collection;
 use iroh_blobs::get::GetError;
 use iroh_blobs::get::Stats;
 use iroh_blobs::get::request::get_hash_seq_and_sizes;
@@ -37,7 +39,11 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
 
     // Use a local user data filder
     let iroh_data_dir = match BaseDirs::new() {
-        Some(base_dirs) => base_dirs.data_dir().to_owned().join("sendme-egui").join("blob_data"),
+        Some(base_dirs) => base_dirs
+            .data_dir()
+            .to_owned()
+            .join("sendme-egui")
+            .join("blob_data"),
         None => return Err(anyhow!("Can't create data directory")),
     };
     println!("{:#?}", iroh_data_dir);
@@ -73,11 +79,14 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
                 match item {
                     GetProgressItem::Progress(offset) => {
                         // info!("{:#?}", offset);
+                        mess.progress("Download", offset as usize, payload_size as usize)
+                            .await?;
                     }
                     GetProgressItem::Done(value) => {
                         // info!("Done {:#?}", value);
                         mess.correct("Done").await?;
-                        mess.info(format!("bytes read {}",value.payload_bytes_read).as_str()).await?;
+                        mess.info(format!("bytes read {}", value.payload_bytes_read).as_str())
+                            .await?;
                     }
                     GetProgressItem::Error(value) => {
                         anyhow::bail!(anyhow!("stream"));
@@ -87,11 +96,12 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
             (stats, total_files, payload_size)
         } else {
             mess.correct("Already Complete!").await?;
-
             let total_files = local.children().unwrap() - 1;
             let payload_bytes = 0;
             (Stats::default(), total_files, payload_bytes)
         };
+        let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
+        export(&db,collection,mess.clone()).await?;
         anyhow::Ok((total_files, payload_size, stats))
     };
     // Follow the files and wait for event
@@ -112,6 +122,16 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
     };
     Ok(())
 }
+
+pub async fn export(db: &Store, collection: Collection, mess: MessageOut) -> Result<()> {
+    let len = collection.len();
+    for (i,(name,hash)) in collection.iter().enumerate() {
+        mess.progress("export",i,len).await?;
+        mess.info(format!("{}",name).as_str()).await?;
+    };
+    Ok(())
+}
+
 // const MAX: usize = 100;
 // let mut ticker = time::interval(Duration::from_millis(20));
 // let mut counter = 0;

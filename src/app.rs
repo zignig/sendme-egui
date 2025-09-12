@@ -27,7 +27,7 @@ impl Default for Config {
 }
 
 // Message list max 
-const MESSAGE_MAX: usize = 100;
+const MESSAGE_MAX: usize = 300;
 
 // The application
 pub struct App {
@@ -65,7 +65,7 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         if self.is_first_update {
             self.is_first_update = false;
-            ctx.set_zoom_factor(1.);
+            ctx.set_zoom_factor(1.2);
             if !self.state.config.dark_mode {
                 ctx.set_visuals(Visuals::light());
             };
