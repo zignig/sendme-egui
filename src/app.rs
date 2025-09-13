@@ -2,7 +2,7 @@
 
 use core::f32;
 
-use crate::comms::{Command, Event, MessageDisplay};
+use crate::comms::{Command, Event, MessageDisplay, ProgressList};
 use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
 use eframe::NativeOptions;
@@ -18,15 +18,13 @@ pub struct Config {
     dark_mode: bool,
 }
 
-impl Default for Config { 
-    fn default() -> Self{ 
-        Self{ 
-            dark_mode: true
-        }
+impl Default for Config {
+    fn default() -> Self {
+        Self { dark_mode: true }
     }
 }
 
-// Message list max 
+// Message list max
 const MESSAGE_MAX: usize = 300;
 
 // The application
@@ -53,9 +51,7 @@ struct AppState {
     worker: WorkerHandle,
     mode: AppMode,
     receiver_ticket: String,
-    progress_current: usize,
-    progress_total: usize,
-    progress_text: String,
+    progress: ProgressList,
     messages: Vec<MessageDisplay>,
     config: Config,
 }
@@ -81,18 +77,16 @@ impl eframe::App for App {
 impl App {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
         let handle = Worker::spawn();
-        // Load the config 
+        // Load the config
         let config = confy::load("sendme-egui", None).unwrap_or_default();
-        let path = confy::get_configuration_file_path("sendme-egui",None);
-        info!("config path {:?}",path);
+        let path = confy::get_configuration_file_path("sendme-egui", None);
+        info!("config path {:?}", path);
         let state = AppState {
             picked_path: None,
             worker: handle,
             mode: AppMode::Init,
             receiver_ticket: String::new(),
-            progress_current: 0,
-            progress_total: 0,
-            progress_text: String::new(),
+            progress: ProgressList::new(),
             messages: Vec::new(),
             config: config,
         };
@@ -120,20 +114,20 @@ impl AppState {
                     self.messages.push(m);
                 }
                 Event::Progress((name, current, total)) => {
-                    self.progress_text = name;
-                    self.progress_current = current;
-                    self.progress_total = total;
+                    self.progress.insert(name, current, total);
                 }
                 Event::Finished => {
                     // Reset state
                     self.reset();
                 }
+                Event::ProgressFinished(name) => self.progress.complete(name),
             }
         }
 
         // active flags
         let mut send_enabled: bool = true;
         let mut receive_enabled: bool = true;
+
         // Use the mode
         match self.mode {
             AppMode::Init => {
@@ -161,6 +155,12 @@ impl AppState {
             ui.add_space(5.);
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(send_enabled, |ui| {
+                    ui.add_enabled_ui(receive_enabled, |ui| {
+                        if ui.button("Fetch...").clicked() {
+                            self.mode = AppMode::Fetch;
+                        }
+                    });
+                    ui.add_space(2.);
                     if ui.button("Send Folder…").clicked() {
                         if let Some(path) = rfd::FileDialog::new().pick_folder() {
                             self.picked_path = Some(path.display().to_string());
@@ -174,13 +174,7 @@ impl AppState {
                         self.mode = AppMode::Send;
                     };
                 });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_enabled_ui(receive_enabled, |ui| {
-                        if ui.button("Fetch...").clicked() {
-                            self.mode = AppMode::Fetch;
-                        }
-                    });
-                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {});
             });
             ui.separator();
             // Show mode based widgets
@@ -217,39 +211,50 @@ impl AppState {
                     ui.label("Sending");
                 }
                 AppMode::FetchProgess => {
-                    let prog_val = (self.progress_current as f32) / (self.progress_total as f32);
-                    let progress_bar = egui::ProgressBar::new(prog_val)
-                        .text(&self.progress_text)
-                        .show_percentage();
-                    ui.add(progress_bar);
-                    // Add a list of the messages.
-                    if prog_val == 1.0 {
-                        self.progress_current = 0;
-                        self.progress_total = 0;
-                        self.mode = AppMode::Idle;
-                    }
+                    // let prog_val = (self.progress_current as f32) / (self.progress_total as f32);
+                    // let progress_bar = egui::ProgressBar::new(prog_val)
+                    //     .text(&self.progress_text)
+                    //     .show_percentage();
+                    // ui.add(progress_bar);
+                    // // Add a list of the messages.
+                    // if prog_val == 1.0 {
+                    //     self.progress_current = 0;
+                    //     self.progress_total = 0;
+                    //     self.mode = AppMode::Idle;
+                    // }
                 }
                 AppMode::Finished => {
                     self.reset();
                 }
             }
+
             // Show the current messages
             self.show_messages(ui);
-            // TODO ebug interface
+            // Show the current progress bars
+            self.show_progress(ui);
             ui.separator();
+            // Temp reset button
             if ui.button("Reset").clicked() {
                 self.reset();
             }
         });
     }
 
+    // Reset the application
     fn reset(&mut self) {
         self.mode = AppMode::Idle;
         self.receiver_ticket = "".to_string();
         self.messages = Vec::new();
+        self.progress.clear();
     }
 
-    // Show the list of
+    // Show the list of progress bars
+    fn show_progress(&mut self, ui: &mut Ui) {
+        ui.add_space(4.);
+        self.progress.show(ui);
+    }
+
+    // Show the list of messages
     fn show_messages(&mut self, ui: &mut Ui) {
         ui.add_space(4.);
         egui::ScrollArea::vertical()

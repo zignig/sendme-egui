@@ -34,9 +34,9 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
         .secret_key(secret_key)
         .relay_mode(RelayMode::Default);
 
-    if ticket.node_addr().relay_url.is_none() && ticket.node_addr().direct_addresses.is_empty() {
+    // if ticket.node_addr().relay_url.is_none() && ticket.node_addr().direct_addresses.is_empty() {
         builder = builder.add_discovery(DnsDiscovery::n0_dns());
-    }
+    // }
     let endpoint = builder.bind().await?;
     mess.info("Local endpoint created...").await?;
 
@@ -89,6 +89,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
                     GetProgressItem::Done(value) => {
                         // info!("Done {:#?}", value);
                         mess.correct("Done").await?;
+                        mess.complete("Download").await?;
                         mess.info(format!("bytes read {}", value.payload_bytes_read).as_str())
                             .await?;
                     }
@@ -115,7 +116,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
             Err(e) => {
                 // make sure we shutdown the db before exiting
                 db2.shutdown().await?;
-                // mess.error(format!("Error {:#?}",e).as_str());   
+                // mess.error(format!("Error {:#?}",e).as_str());
                 anyhow::bail!(anyhow!(e));
             }
         },
@@ -130,9 +131,10 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
 pub async fn export(db: &Store, collection: Collection, mess: MessageOut) -> Result<()> {
     let len = collection.len();
     for (i, (name, hash)) in collection.iter().enumerate() {
-        mess.progress("export", i, len).await?;
+        mess.progress("Export", i, len).await?;
         // mess.info(format!("{}", name).as_str()).await?;
     }
+    mess.complete("Export").await?;
     Ok(())
 }
 
