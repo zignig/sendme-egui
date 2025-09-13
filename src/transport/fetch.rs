@@ -154,7 +154,7 @@ pub async fn export(
                 "target {} already exists. Export stopped.",
                 target.display()
             );
-            anyhow::bail!("target {} already exists", target.display());
+            anyhow::bail!("{} already exists", target.display());
         }
         mess.progress("Export", i, len).await?;
         let mut stream = db
