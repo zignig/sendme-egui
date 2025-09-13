@@ -50,7 +50,7 @@ enum AppMode {
 
 // Internal state for the application
 struct AppState {
-    picked_path: Option<String>,
+    picked_path: Option<PathBuf>,
     worker: WorkerHandle,
     mode: AppMode,
     receiver_ticket: String,
@@ -172,13 +172,13 @@ impl AppState {
                     ui.add_space(2.);
                     if ui.button("Send Folder…").clicked() {
                         if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            self.picked_path = Some(path.display().to_string());
+                            self.picked_path = Some(path);
                         }
                         self.mode = AppMode::Send;
                     };
                     if ui.button("Send File…").clicked() {
                         if let Some(path) = rfd::FileDialog::new().pick_file() {
-                            self.picked_path = Some(path.display().to_string());
+                            self.picked_path = Some(path);
                         }
                         self.mode = AppMode::Send;
                     };
@@ -212,13 +212,13 @@ impl AppState {
                         };
                         if ui.button("Fetch Into...").clicked() {
                             if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                self.picked_path = Some(path.display().to_string());
+                                self.picked_path = Some(path.clone());
+                                self.cmd(Command::Fetch((
+                                    self.receiver_ticket.clone(),
+                                    path.clone(),
+                                )));
+                                self.mode = AppMode::FetchProgess;
                             }
-                            self.cmd(Command::Fetch((
-                                self.receiver_ticket.clone(),
-                                self.download_path.clone(),
-                            )));
-                            self.mode = AppMode::FetchProgess;
                         };
                     });
                 }

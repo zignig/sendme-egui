@@ -21,7 +21,7 @@ pub enum Event {
 #[derive(Debug)]
 pub enum Command {
     Setup,
-    Send(String),
+    Send(PathBuf),
     Fetch((String, PathBuf)),
 }
 

@@ -8,8 +8,7 @@ use walkdir::WalkDir;
 
 
 // Mock of offser folder in iroh-blobs
-pub async fn send(path_string: String, mess: MessageOut) -> Result<()> {
-    let path = PathBuf::from(path_string);
+pub async fn send(path: PathBuf, mess: MessageOut) -> Result<()> {
     let files = WalkDir::new(path.clone()).into_iter();
     for file in files {
         if let Ok(file) = file {
