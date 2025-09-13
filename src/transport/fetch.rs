@@ -18,6 +18,8 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use tokio::{select, sync::mpsc};
 use tracing::{info, warn};
+use humansize::{format_size, DECIMAL};
+
 
 use iroh::{
     Endpoint, NodeAddr, RelayMode, RelayUrl, SecretKey, Watcher,
@@ -76,7 +78,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Resul
             let total_size = sizes.iter().copied().sum::<u64>();
             let payload_size = sizes.iter().skip(2).copied().sum::<u64>();
             let total_files = (sizes.len().saturating_sub(1)) as u64;
-            mess.info(format!("total size: {}", total_size).as_str())
+            mess.info(format!("total size: {}", format_size(total_size,DECIMAL)).as_str())
                 .await?;
             eprintln!(
                 "getting collection {} {} files, {}",
