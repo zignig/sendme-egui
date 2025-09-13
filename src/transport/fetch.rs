@@ -29,15 +29,18 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
     // mess.correct(format!("hash : {:?}", ticket.hash()).as_str())        .await?;
     let addr = ticket.node_addr().clone();
     let secret_key = super::get_or_create_secret(true)?;
-    let mut builder = Endpoint::builder().alpns(vec![]).secret_key(secret_key);
-    // .relay_mode(args.common.relay.into());
+    let mut builder = Endpoint::builder()
+        .alpns(vec![])
+        .secret_key(secret_key)
+        .relay_mode(RelayMode::Default);
 
     if ticket.node_addr().relay_url.is_none() && ticket.node_addr().direct_addresses.is_empty() {
         builder = builder.add_discovery(DnsDiscovery::n0_dns());
     }
     let endpoint = builder.bind().await?;
+    mess.info("Local endpoint created...").await?;
 
-    // Use a local user data filder
+    // Use a local user data folder
     let iroh_data_dir = match BaseDirs::new() {
         Some(base_dirs) => base_dirs
             .data_dir()
@@ -57,6 +60,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
         info!("computing local");
         let local = db.remote().local(hash_and_format).await?;
         let (stats, total_files, payload_size) = if !local.is_complete() {
+            mess.info("Incomplete Download").await?;
             let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
             let (_hash_seq, sizes) =
                 get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
@@ -101,7 +105,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
             (Stats::default(), total_files, payload_bytes)
         };
         let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
-        export(&db,collection,mess.clone()).await?;
+        export(&db, collection, mess.clone()).await?;
         anyhow::Ok((total_files, payload_size, stats))
     };
     // Follow the files and wait for event
@@ -111,8 +115,8 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
             Err(e) => {
                 // make sure we shutdown the db before exiting
                 db2.shutdown().await?;
-                eprintln!("error: {e}");
-                std::process::exit(1);
+                // mess.error(format!("Error {:#?}",e).as_str());   
+                anyhow::bail!(anyhow!(e));
             }
         },
         _ = tokio::signal::ctrl_c() => {
@@ -125,10 +129,10 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
 
 pub async fn export(db: &Store, collection: Collection, mess: MessageOut) -> Result<()> {
     let len = collection.len();
-    for (i,(name,hash)) in collection.iter().enumerate() {
-        mess.progress("export",i,len).await?;
-        mess.info(format!("{}",name).as_str()).await?;
-    };
+    for (i, (name, hash)) in collection.iter().enumerate() {
+        mess.progress("export", i, len).await?;
+        // mess.info(format!("{}", name).as_str()).await?;
+    }
     Ok(())
 }
 

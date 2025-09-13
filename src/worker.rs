@@ -79,9 +79,9 @@ impl Worker {
         match command {
             // TODO just for now
             Command::Setup => {
-                self.mess.correct("correct").await?;
-                self.mess.info("info").await?;
-                self.mess.error("error").await?;
+                self.mess.correct("Ready...").await?;
+                // self.mess.info("info").await?;
+                // self.mess.error("error").await?;
                 return Ok(());
             }
             // This needs commands to finish
