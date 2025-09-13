@@ -1,7 +1,7 @@
 // Comms between the gui and  the worker in it's own module.
 // Some of this lives on both sides ( be careful )
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use anyhow::Result;
 use async_channel::Sender;
@@ -22,7 +22,7 @@ pub enum Event {
 pub enum Command {
     Setup,
     Send(String),
-    Fetch(String),
+    Fetch((String, PathBuf)),
 }
 
 // Message types
@@ -150,7 +150,7 @@ impl ProgressBar {
         ui.add_space(2.);
         ui.small(self.name.to_string());
         ui.add_space(2.);
-        let prog_val = if (self.current == self.total) {
+        let prog_val = if self.current == self.total {
             1.
         } else {
             (self.current as f32) / (self.total as f32)

@@ -3,9 +3,7 @@
 // This is to fillet the sendme original in half
 // and construct endpoints at the top level
 
-use crate::comms::MessageOut;
 use anyhow::Result;
-use anyhow::anyhow;
 use rand;
 
 use iroh::SecretKey;

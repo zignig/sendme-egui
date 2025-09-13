@@ -1,10 +1,13 @@
 // The application egui front end
 
 use core::f32;
+use std::path::PathBuf;
 
 use crate::comms::{Command, Event, MessageDisplay, ProgressList};
 use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
+use anyhow::anyhow;
+use directories::UserDirs;
 use eframe::NativeOptions;
 use eframe::egui::{self, Visuals};
 use egui::Ui;
@@ -54,6 +57,7 @@ struct AppState {
     progress: ProgressList,
     messages: Vec<MessageDisplay>,
     config: Config,
+    download_path: PathBuf,
 }
 
 // Make the egui impl for display
@@ -80,6 +84,10 @@ impl App {
         // Load the config
         let config = confy::load("sendme-egui", None).unwrap_or_default();
         let path = confy::get_configuration_file_path("sendme-egui", None);
+        let download_path = match UserDirs::new() {
+            Some(user_dirs) => user_dirs.download_dir().unwrap().to_owned(),
+            None => std::process::exit(1),
+        };
         info!("config path {:?}", path);
         let state = AppState {
             picked_path: None,
@@ -89,6 +97,7 @@ impl App {
             progress: ProgressList::new(),
             messages: Vec::new(),
             config: config,
+            download_path: download_path,
         };
         let app = App {
             is_first_update: true,
@@ -195,14 +204,20 @@ impl AppState {
                         .show(ui);
                     ui.horizontal(|ui| {
                         if ui.button("Fetch").clicked() {
-                            self.cmd(Command::Fetch(self.receiver_ticket.clone()));
+                            self.cmd(Command::Fetch((
+                                self.receiver_ticket.clone(),
+                                self.download_path.clone(),
+                            )));
                             self.mode = AppMode::FetchProgess;
                         };
                         if ui.button("Fetch Into...").clicked() {
                             if let Some(path) = rfd::FileDialog::new().pick_folder() {
                                 self.picked_path = Some(path.display().to_string());
                             }
-                            self.cmd(Command::Fetch(self.receiver_ticket.clone()));
+                            self.cmd(Command::Fetch((
+                                self.receiver_ticket.clone(),
+                                self.download_path.clone(),
+                            )));
                             self.mode = AppMode::FetchProgess;
                         };
                     });

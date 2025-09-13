@@ -2,6 +2,8 @@
 // Worker
 // --------------------------
 
+use std::path::PathBuf;
+
 use crate::comms::{Command, Event, MessageOut};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
@@ -89,8 +91,9 @@ impl Worker {
                 send(path,self.mess.clone()).await?;
                 return Ok(());
             }
-            Command::Fetch(ticket) => {
-                receive(ticket,self.mess.clone()).await?;
+            Command::Fetch((ticket,target)) => {
+                let target_path = PathBuf::from(target);
+                receive(ticket,target_path,self.mess.clone()).await?;
                 return Ok(());
             }
         }

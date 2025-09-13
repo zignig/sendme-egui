@@ -3,6 +3,9 @@ use anyhow::Result;
 use anyhow::anyhow;
 use directories::BaseDirs;
 use iroh_blobs::api::Store;
+use iroh_blobs::api::blobs::ExportMode;
+use iroh_blobs::api::blobs::ExportOptions;
+use iroh_blobs::api::blobs::ExportProgressItem;
 use iroh_blobs::api::remote::GetProgressItem;
 use iroh_blobs::format::collection::Collection;
 use iroh_blobs::get::GetError;
@@ -10,6 +13,8 @@ use iroh_blobs::get::Stats;
 use iroh_blobs::get::request::get_hash_seq_and_sizes;
 use iroh_blobs::ticket::BlobTicket;
 use n0_future::{StreamExt, task::AbortOnDropHandle};
+use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
 use tokio::{select, sync::mpsc};
 use tracing::{info, warn};
@@ -20,7 +25,7 @@ use iroh::{
 };
 
 // fetch a blob from the iroh network
-pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
+pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Result<()> {
     if ticket == "".to_string() {
         return Err(anyhow!("Empty Blob"));
     }
@@ -59,6 +64,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
         let hash_and_format = ticket.hash_and_format();
         info!("computing local");
         let local = db.remote().local(hash_and_format).await?;
+        info!("got local");
         let (stats, total_files, payload_size) = if !local.is_complete() {
             mess.info("Incomplete Download").await?;
             let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
@@ -109,7 +115,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
             (Stats::default(), total_files, payload_bytes)
         };
         let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
-        export(&db, collection, mess.clone()).await?;
+        export(&db, collection, target, mess.clone()).await?;
         anyhow::Ok((total_files, payload_size, stats))
     };
     // Follow the files and wait for event
@@ -132,16 +138,72 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
     Ok(())
 }
 
-pub async fn export(db: &Store, collection: Collection, mess: MessageOut) -> Result<()> {
+pub async fn export(
+    db: &Store,
+    collection: Collection,
+    target_dir: PathBuf,
+    mess: MessageOut,
+) -> Result<()> {
     let len = collection.len();
     for (i, (name, hash)) in collection.iter().enumerate() {
+        // info!("file name {}", name);
+        let target = get_export_path(&target_dir, name)?;
+        info!("target {:#?}",target.display());
+        if target.exists() {
+            info!(
+                "target {} already exists. Export stopped.",
+                target.display()
+            );
+            anyhow::bail!("target {} already exists", target.display());
+        }
         mess.progress("Export", i, len).await?;
-        // mess.info(format!("{}", name).as_str()).await?;
+        let mut stream = db
+            .export_with_opts(ExportOptions {
+                hash: *hash,
+                target,
+                mode: ExportMode::Copy,
+            })
+            .stream()
+            .await;
+        while let Some(item) = stream.next().await {
+            match item {
+                ExportProgressItem::Size(size) => {
+                    // pb.set_length(size);
+                }
+                ExportProgressItem::CopyProgress(offset) => {
+                    // pb.set_position(offset);
+                }
+                ExportProgressItem::Done => {
+                    // pb.finish_and_clear();
+                }
+                ExportProgressItem::Error(cause) => {
+                    // pb.finish_and_clear();
+                    anyhow::bail!("error exporting {}: {}", name, cause);
+                }
+            }
+        }
     }
     mess.complete("Export").await?;
     Ok(())
 }
 
+fn get_export_path(root: &Path, name: &str) -> anyhow::Result<PathBuf> {
+    let parts = name.split('/');
+    let mut path = root.to_path_buf();
+    for part in parts {
+        validate_path_component(part)?;
+        path.push(part);
+    }
+    Ok(path)
+}
+
+fn validate_path_component(component: &str) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        !component.contains('/'),
+        "path components must not contain the only correct path separator, /"
+    );
+    Ok(())
+}
 // const MAX: usize = 100;
 // let mut ticker = time::interval(Duration::from_millis(20));
 // let mut counter = 0;
