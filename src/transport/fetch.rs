@@ -35,7 +35,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
         .relay_mode(RelayMode::Default);
 
     // if ticket.node_addr().relay_url.is_none() && ticket.node_addr().direct_addresses.is_empty() {
-        builder = builder.add_discovery(DnsDiscovery::n0_dns());
+    builder = builder.add_discovery(DnsDiscovery::n0_dns());
     // }
     let endpoint = builder.bind().await?;
     mess.info("Local endpoint created...").await?;
@@ -62,6 +62,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
         let (stats, total_files, payload_size) = if !local.is_complete() {
             mess.info("Incomplete Download").await?;
             let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
+            mess.correct("Connection Established").await?;
             let (_hash_seq, sizes) =
                 get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
                     .await?;
@@ -69,6 +70,8 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
             let total_size = sizes.iter().copied().sum::<u64>();
             let payload_size = sizes.iter().skip(2).copied().sum::<u64>();
             let total_files = (sizes.len().saturating_sub(1)) as u64;
+            mess.info(format!("total size: {}", total_size).as_str())
+                .await?;
             eprintln!(
                 "getting collection {} {} files, {}",
                 &ticket.hash().to_hex().to_string(),
@@ -115,6 +118,7 @@ pub async fn receive(ticket: String, mess: MessageOut) -> Result<()> {
             Ok(x) => x,
             Err(e) => {
                 // make sure we shutdown the db before exiting
+                db2.sync_db().await?;
                 db2.shutdown().await?;
                 // mess.error(format!("Error {:#?}",e).as_str());
                 anyhow::bail!(anyhow!(e));

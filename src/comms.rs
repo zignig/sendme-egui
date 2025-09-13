@@ -150,9 +150,13 @@ impl ProgressBar {
         ui.add_space(2.);
         ui.small(self.name.to_string());
         ui.add_space(2.);
-        let prog_val = (self.current as f32) / (self.total as f32);
-        let mut progress_bar = egui::ProgressBar::new(prog_val).show_percentage(); 
-        if self.complete { 
+        let prog_val = if (self.current == self.total) {
+            1.
+        } else {
+            (self.current as f32) / (self.total as f32)
+        };
+        let mut progress_bar = egui::ProgressBar::new(prog_val).show_percentage();
+        if self.complete {
             progress_bar = progress_bar.fill(Color32::DARK_GREEN);
         }
         ui.add(progress_bar);
