@@ -22,11 +22,10 @@ use tracing::{info, warn};
 use iroh::{Endpoint, RelayMode, discovery::dns::DnsDiscovery};
 
 // fetch a blob from the iroh network
-pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Result<()> {
+pub async fn receive(ticket: String, target: PathBuf, mut mess: &mut MessageOut) -> Result<()> {
     if ticket == "".to_string() {
         return Err(anyhow!("Empty Blob"));
     }
-    let mess2 = mess.clone();
     let ticket = BlobTicket::from_str(ticket.as_str())?;
     // mess.correct(format!("nodeid : {:?}", ticket.node_addr().node_id).as_str())        .await?;
     // mess.correct(format!("hash : {:?}", ticket.hash()).as_str())        .await?;
@@ -113,7 +112,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Resul
             (Stats::default(), total_files, payload_bytes)
         };
         let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
-        export(&db, collection, target, mess.clone()).await?;
+        export(&db, collection, target, &mut mess).await?;
         anyhow::Ok((total_files, payload_size, stats))
     };
     // Follow the files and wait for event
@@ -133,8 +132,6 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Resul
             std::process::exit(130);
         }
     };
-    mess2.info(format!("total files : {}", &total_files).as_str()).await?;
-    mess2.info(format!("stats : {:#?}", &stats).as_str()).await?;
     Ok(())
 }
 
@@ -142,7 +139,7 @@ pub async fn export(
     db: &Store,
     collection: Collection,
     target_dir: PathBuf,
-    mess: MessageOut,
+    mess: &mut MessageOut,
 ) -> Result<()> {
     let len = collection.len();
     for (i, (name, hash)) in collection.iter().enumerate() {
@@ -204,6 +201,8 @@ fn validate_path_component(component: &str) -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+
 // const MAX: usize = 100;
 // let mut ticker = time::interval(Duration::from_millis(20));
 // let mut counter = 0;

@@ -8,8 +8,10 @@ use async_channel::Sender;
 use eframe::egui;
 use egui::{Color32, Ui};
 
+// Update Callback
+type UpdateCallback = Box<dyn Fn() + Send + 'static>;
+
 // Incoming events
-#[derive(Clone)]
 pub enum Event {
     Message(MessageDisplay),
     Progress((String, usize, usize)),
@@ -18,11 +20,11 @@ pub enum Event {
 }
 
 // Outgoing Commands
-#[derive(Debug)]
 pub enum Command {
     Setup,
     Send(PathBuf),
     Fetch((String, PathBuf)),
+    SetUpdateCallBack { callback: UpdateCallback },
 }
 
 // Message types
@@ -41,71 +43,78 @@ pub struct MessageDisplay {
 }
 
 // Messaging
-#[derive(Clone)]
-
 pub struct MessageOut {
     event_tx: Sender<Event>,
+    callback: Option<UpdateCallback>,
 }
 
 impl MessageOut {
     pub fn new(event_tx: Sender<Event>) -> Self {
-        Self { event_tx }
+        Self {
+            event_tx,
+            callback: None,
+        }
+    }
+
+    pub fn set_callback(&mut self, callback: UpdateCallback) {
+        self.callback = Some(callback);
+    }
+
+    async fn emit(&self, event: Event) -> Result<()> {
+        if let Some(callback) = &self.callback {
+            callback();
+        }
+        self.event_tx.send(event).await?;
+        Ok(())
     }
 
     pub async fn info(&self, message: &str) -> Result<()> {
-        self.event_tx
-            .send(Event::Message(MessageDisplay {
-                text: message.to_string(),
-                mtype: MessageType::Info,
-            }))
-            .await?;
+        self.emit(Event::Message(MessageDisplay {
+            text: message.to_string(),
+            mtype: MessageType::Info,
+        }))
+        .await?;
         Ok(())
     }
 
     pub async fn correct(&self, message: &str) -> Result<()> {
-        self.event_tx
-            .send(Event::Message(MessageDisplay {
-                text: message.to_string(),
-                mtype: MessageType::Good,
-            }))
-            .await?;
+        self.emit(Event::Message(MessageDisplay {
+            text: message.to_string(),
+            mtype: MessageType::Good,
+        }))
+        .await?;
         Ok(())
     }
 
     pub async fn error(&self, message: &str) -> Result<()> {
-        self.event_tx
-            .send(Event::Message(MessageDisplay {
-                text: message.to_string(),
-                mtype: MessageType::Error,
-            }))
-            .await?;
+        self.emit(Event::Message(MessageDisplay {
+            text: message.to_string(),
+            mtype: MessageType::Error,
+        }))
+        .await?;
         Ok(())
     }
 
     pub async fn finished(&self) -> Result<()> {
-        self.event_tx
-            .send(Event::Message(MessageDisplay {
-                text: "finished...".to_string(),
-                mtype: MessageType::Good,
-            }))
-            .await?;
-        self.event_tx.send(Event::Finished).await?;
+        self.emit(Event::Message(MessageDisplay {
+            text: "Finished...".to_string(),
+            mtype: MessageType::Good,
+        }))
+        .await?;
+        self.emit(Event::Finished).await?;
         Ok(())
     }
 
     pub async fn progress(&self, name: &str, current: usize, total: usize) -> Result<()> {
         // info!("progress {} / {} ",current,total);
-        self.event_tx
-            .send(Event::Progress((name.to_string(), current, total)))
+        self.emit(Event::Progress((name.to_string(), current, total)))
             .await?;
         Ok(())
     }
 
     pub async fn complete(&self, name: &str) -> Result<()> {
         // info!("progress {} / {} ",current,total);
-        self.event_tx
-            .send(Event::ProgressFinished(name.to_string()))
-            .await?;
+        self.emit(Event::ProgressFinished(name.to_string())).await?;
         Ok(())
     }
 }
@@ -160,7 +169,7 @@ impl ProgressBar {
             progress_bar = progress_bar.fill(Color32::DARK_GREEN);
         }
         ui.add(progress_bar);
-        if let Some(item) = &self.item{ 
+        if let Some(item) = &self.item {
             ui.small(item);
         }
     }

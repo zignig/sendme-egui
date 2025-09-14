@@ -19,7 +19,7 @@ use tracing::info;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     dark_mode: bool,
-    download_path: PathBuf
+    download_path: PathBuf,
 }
 
 impl Default for Config {
@@ -28,7 +28,10 @@ impl Default for Config {
             Some(user_dirs) => user_dirs.download_dir().unwrap().to_owned().join("sendme"),
             None => std::process::exit(1),
         };
-        Self { dark_mode: true , download_path }
+        Self {
+            dark_mode: true,
+            download_path,
+        }
     }
 }
 
@@ -74,7 +77,8 @@ impl eframe::App for App {
                 ctx.set_visuals(Visuals::light());
             };
             let ctx = ctx.clone();
-            ctx.request_repaint();
+            let callback = Box::new(move || ctx.request_repaint());
+            self.state.cmd(Command::SetUpdateCallBack { callback });
         }
         self.state.update(ctx);
     }
@@ -113,7 +117,7 @@ impl AppState {
         // Events from the worker
         while let Ok(event) = self.worker.event_rx.try_recv() {
             // Event probably needs a repaint
-            ctx.request_repaint();
+            // ctx.request_repaint();
             match event {
                 Event::Message(m) => {
                     if self.messages.len() > MESSAGE_MAX {
@@ -128,7 +132,6 @@ impl AppState {
                     self.mode = AppMode::Finished;
                     // Reset state
                     // self.reset();
-
                 }
                 Event::ProgressFinished(name) => self.progress.complete(name),
             }
@@ -166,13 +169,13 @@ impl AppState {
             ui.separator();
             ui.add_space(5.);
             ui.horizontal(|ui| {
+                ui.add_enabled_ui(receive_enabled, |ui| {
+                    if ui.button("Fetch...").clicked() {
+                        self.mode = AppMode::Fetch;
+                    }
+                });
+                ui.add_space(2.);
                 ui.add_enabled_ui(send_enabled, |ui| {
-                    ui.add_enabled_ui(receive_enabled, |ui| {
-                        if ui.button("Fetch...").clicked() {
-                            self.mode = AppMode::Fetch;
-                        }
-                    });
-                    ui.add_space(2.);
                     if ui.button("Send Folder…").clicked() {
                         if let Some(path) = rfd::FileDialog::new().pick_folder() {
                             self.picked_path = Some(path);
@@ -207,17 +210,15 @@ impl AppState {
                 AppMode::SendProgress => {
                     ui.label("Sending");
                 }
-                AppMode::FetchProgess => {
-                }
+                AppMode::FetchProgess => {}
                 AppMode::Finished => {
                     // self.reset();
                 }
             }
-
-            // Show the current progress bars
-            self.show_progress(ui);
             // Show the current messages
             self.show_messages(ui);
+            // Show the current progress bars
+            self.show_progress(ui);
             ui.separator();
             // Temp reset button
             if ui.button("Reset").clicked() {
@@ -243,16 +244,13 @@ impl AppState {
             if ui.button("Fetch Into...").clicked() {
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     self.picked_path = Some(path.clone());
-                    self.cmd(Command::Fetch((
-                        self.receiver_ticket.clone(),
-                        path.clone(),
-                    )));
+                    self.cmd(Command::Fetch((self.receiver_ticket.clone(), path.clone())));
                     self.mode = AppMode::FetchProgess;
                 }
             };
         });
     }
-    
+
     // Reset the application
     fn reset(&mut self) {
         self.mode = AppMode::Idle;
@@ -270,14 +268,14 @@ impl AppState {
     // Show the list of messages
     fn show_messages(&mut self, ui: &mut Ui) {
         ui.add_space(4.);
-        egui::ScrollArea::vertical()
-            .max_height(100.)
-            .show(ui, |ui| {
-                for message in self.messages.iter() {
-                    message.show(ui);
-                    ui.add_space(4.);
-                }
-            });
+        // let text_style = egui::TextStyle::Body;
+        // let row_height = ui.text_style_height(&text_style);
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for message in self.messages.iter() { 
+                message.show(ui);
+                ui.add_space(4.);
+            };
+        });
     }
 
     fn cmd(&self, command: Command) {

@@ -9,7 +9,7 @@ use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use tracing::{info, warn};
 
-use crate::transport::{send,receive};
+use crate::transport::{receive, send};
 pub struct Worker {
     pub command_rx: Receiver<Command>,
     // pub event_tx: Sender<Event>,
@@ -66,7 +66,6 @@ impl Worker {
             tokio::select! {
                 command = self.command_rx.recv() => {
                     let command = command?;
-                    info!("command {:?}",command);
                     if let Err(err ) = self.handle_command(command).await{
                         self.mess.error(format!("{}",err).as_str()).await?;
                         warn!("command failed {err}");
@@ -88,13 +87,18 @@ impl Worker {
             }
             // This needs commands to finish
             Command::Send(path) => {
-                send(path,self.mess.clone()).await?;
+                send(path, &mut self.mess).await?;
                 return Ok(());
             }
-            Command::Fetch((ticket,target)) => {
+            Command::Fetch((ticket, target)) => {
                 let target_path = PathBuf::from(target);
-                receive(ticket,target_path,self.mess.clone()).await?;
+                receive(ticket, target_path, &mut self.mess).await?;
                 self.mess.finished().await?;
+                return Ok(());
+            }
+            Command::SetUpdateCallBack { callback } => {
+                //  Set up  the callback
+                self.mess.set_callback(callback);
                 return Ok(());
             }
         }
