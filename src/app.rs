@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use crate::comms::{Command, Event, MessageDisplay, ProgressList};
 use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
-use anyhow::anyhow;
+// use anyhow::anyhow;
 use directories::UserDirs;
 use eframe::NativeOptions;
 use eframe::egui::{self, Visuals};
@@ -125,8 +125,10 @@ impl AppState {
                     self.progress.insert(name, current, total);
                 }
                 Event::Finished => {
+                    self.mode = AppMode::Finished;
                     // Reset state
-                    self.reset();
+                    // self.reset();
+
                 }
                 Event::ProgressFinished(name) => self.progress.complete(name),
             }
@@ -153,7 +155,9 @@ impl AppState {
                 receive_enabled = false;
                 send_enabled = false;
             }
-            AppMode::Finished => {}
+            AppMode::Finished => {
+                self.mode = AppMode::Idle;
+            }
         }
         // The actual gui
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -182,7 +186,7 @@ impl AppState {
                         self.mode = AppMode::Send;
                     };
                 });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {});
+                // ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {});
             });
             ui.separator();
             // Show mode based widgets
@@ -206,7 +210,7 @@ impl AppState {
                 AppMode::FetchProgess => {
                 }
                 AppMode::Finished => {
-                    self.reset();
+                    // self.reset();
                 }
             }
 

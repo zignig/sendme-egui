@@ -2,40 +2,36 @@ use crate::comms::MessageOut;
 use anyhow::Result;
 use anyhow::anyhow;
 use directories::BaseDirs;
+use humansize::{DECIMAL, format_size};
 use iroh_blobs::api::Store;
 use iroh_blobs::api::blobs::ExportMode;
 use iroh_blobs::api::blobs::ExportOptions;
 use iroh_blobs::api::blobs::ExportProgressItem;
 use iroh_blobs::api::remote::GetProgressItem;
 use iroh_blobs::format::collection::Collection;
-use iroh_blobs::get::GetError;
 use iroh_blobs::get::Stats;
 use iroh_blobs::get::request::get_hash_seq_and_sizes;
 use iroh_blobs::ticket::BlobTicket;
-use n0_future::{StreamExt, task::AbortOnDropHandle};
+use n0_future::StreamExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use tokio::{select, sync::mpsc};
+use tokio::select;
 use tracing::{info, warn};
-use humansize::{format_size, DECIMAL};
 
-
-use iroh::{
-    Endpoint, NodeAddr, RelayMode, RelayUrl, SecretKey, Watcher,
-    discovery::{dns::DnsDiscovery, pkarr::PkarrPublisher},
-};
+use iroh::{Endpoint, RelayMode, discovery::dns::DnsDiscovery};
 
 // fetch a blob from the iroh network
 pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Result<()> {
     if ticket == "".to_string() {
         return Err(anyhow!("Empty Blob"));
     }
+    let mess2 = mess.clone();
     let ticket = BlobTicket::from_str(ticket.as_str())?;
     // mess.correct(format!("nodeid : {:?}", ticket.node_addr().node_id).as_str())        .await?;
     // mess.correct(format!("hash : {:?}", ticket.hash()).as_str())        .await?;
     let addr = ticket.node_addr().clone();
-    let secret_key = super::get_or_create_secret(true)?;
+    let secret_key = super::get_or_create_secret()?;
     let mut builder = Endpoint::builder()
         .alpns(vec![])
         .secret_key(secret_key)
@@ -78,7 +74,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Resul
             let total_size = sizes.iter().copied().sum::<u64>();
             let payload_size = sizes.iter().skip(2).copied().sum::<u64>();
             let total_files = (sizes.len().saturating_sub(1)) as u64;
-            mess.info(format!("total size: {}", format_size(total_size,DECIMAL)).as_str())
+            mess.info(format!("total size: {}", format_size(total_size, DECIMAL)).as_str())
                 .await?;
             eprintln!(
                 "getting collection {} {} files, {}",
@@ -88,7 +84,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Resul
             );
             // Fetch the file
             let get = db.remote().execute_get(connection, local.missing());
-            let mut stats = Stats::default();
+            let stats = Stats::default();
             let mut stream = get.stream();
             while let Some(item) = stream.next().await {
                 match item {
@@ -104,7 +100,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Resul
                         mess.info(format!("bytes read {}", value.payload_bytes_read).as_str())
                             .await?;
                     }
-                    GetProgressItem::Error(value) => {
+                    GetProgressItem::Error(_value) => {
                         anyhow::bail!(anyhow!("stream"));
                     }
                 }
@@ -121,7 +117,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Resul
         anyhow::Ok((total_files, payload_size, stats))
     };
     // Follow the files and wait for event
-    let (total_files, payload_size, stats) = select! {
+    let (total_files, _payload_size, stats) = select! {
         x = fut => match x {
             Ok(x) => x,
             Err(e) => {
@@ -137,6 +133,8 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut) -> Resul
             std::process::exit(130);
         }
     };
+    mess2.info(format!("total files : {}", &total_files).as_str()).await?;
+    mess2.info(format!("stats : {:#?}", &stats).as_str()).await?;
     Ok(())
 }
 
@@ -150,7 +148,7 @@ pub async fn export(
     for (i, (name, hash)) in collection.iter().enumerate() {
         // info!("file name {}", name);
         let target = get_export_path(&target_dir, name)?;
-        info!("target {:#?}",target.display());
+        info!("target {:#?}", target.display());
         if target.exists() {
             info!(
                 "target {} already exists. Export stopped.",
@@ -158,7 +156,7 @@ pub async fn export(
             );
             anyhow::bail!("{} already exists", target.display());
         }
-        mess.progress("Export", i+1, len).await?;
+        mess.progress("Export", i + 1, len).await?;
         let mut stream = db
             .export_with_opts(ExportOptions {
                 hash: *hash,
@@ -169,10 +167,10 @@ pub async fn export(
             .await;
         while let Some(item) = stream.next().await {
             match item {
-                ExportProgressItem::Size(size) => {
+                ExportProgressItem::Size(_size) => {
                     // pb.set_length(size);
                 }
-                ExportProgressItem::CopyProgress(offset) => {
+                ExportProgressItem::CopyProgress(_offset) => {
                     // pb.set_position(offset);
                 }
                 ExportProgressItem::Done => {

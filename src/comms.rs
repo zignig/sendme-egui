@@ -160,6 +160,9 @@ impl ProgressBar {
             progress_bar = progress_bar.fill(Color32::DARK_GREEN);
         }
         ui.add(progress_bar);
+        if let Some(item) = &self.item{ 
+            ui.small(item);
+        }
     }
 }
 

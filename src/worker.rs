@@ -94,6 +94,7 @@ impl Worker {
             Command::Fetch((ticket,target)) => {
                 let target_path = PathBuf::from(target);
                 receive(ticket,target_path,self.mess.clone()).await?;
+                self.mess.finished().await?;
                 return Ok(());
             }
         }
