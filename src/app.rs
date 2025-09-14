@@ -116,8 +116,6 @@ impl AppState {
     fn update(&mut self, ctx: &egui::Context) {
         // Events from the worker
         while let Ok(event) = self.worker.event_rx.try_recv() {
-            // Event probably needs a repaint
-            // ctx.request_repaint();
             match event {
                 Event::Message(m) => {
                     if self.messages.len() > MESSAGE_MAX {
@@ -141,7 +139,7 @@ impl AppState {
         let mut send_enabled: bool = true;
         let mut receive_enabled: bool = true;
 
-        // Use the mode
+        // Use the mode to enable and disable
         match self.mode {
             AppMode::Init => {
                 self.cmd(Command::Setup);

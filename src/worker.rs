@@ -99,6 +99,7 @@ impl Worker {
             Command::SetUpdateCallBack { callback } => {
                 //  Set up  the callback
                 self.mess.set_callback(callback);
+                self.mess.info("setting callback");
                 return Ok(());
             }
         }
