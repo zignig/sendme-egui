@@ -158,7 +158,7 @@ pub async fn export(
             );
             anyhow::bail!("{} already exists", target.display());
         }
-        mess.progress("Export", i, len).await?;
+        mess.progress("Export", i+1, len).await?;
         let mut stream = db
             .export_with_opts(ExportOptions {
                 hash: *hash,

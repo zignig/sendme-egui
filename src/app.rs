@@ -19,11 +19,16 @@ use tracing::info;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     dark_mode: bool,
+    download_path: PathBuf
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { dark_mode: true }
+        let download_path = match UserDirs::new() {
+            Some(user_dirs) => user_dirs.download_dir().unwrap().to_owned().join("sendme"),
+            None => std::process::exit(1),
+        };
+        Self { dark_mode: true , download_path }
     }
 }
 
@@ -57,7 +62,6 @@ struct AppState {
     progress: ProgressList,
     messages: Vec<MessageDisplay>,
     config: Config,
-    download_path: PathBuf,
 }
 
 // Make the egui impl for display
@@ -84,10 +88,6 @@ impl App {
         // Load the config
         let config = confy::load("sendme-egui", None).unwrap_or_default();
         let path = confy::get_configuration_file_path("sendme-egui", None);
-        let download_path = match UserDirs::new() {
-            Some(user_dirs) => user_dirs.download_dir().unwrap().to_owned(),
-            None => std::process::exit(1),
-        };
         info!("config path {:?}", path);
         let state = AppState {
             picked_path: None,
@@ -97,7 +97,6 @@ impl App {
             progress: ProgressList::new(),
             messages: Vec::new(),
             config: config,
-            download_path: download_path,
         };
         let app = App {
             is_first_update: true,
@@ -189,7 +188,9 @@ impl AppState {
             // Show mode based widgets
             match self.mode {
                 AppMode::Init => {}
-                AppMode::Idle => {}
+                AppMode::Idle => {
+                    self.fetch_box(ui);
+                }
                 AppMode::Send => {
                     if let Some(path) = &self.picked_path {
                         self.cmd(Command::Send(path.to_owned()));
@@ -197,56 +198,22 @@ impl AppState {
                     }
                 }
                 AppMode::Fetch => {
-                    ui.small("Blob ticket.");
-                    ui.add_space(8.);
-                    let _ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
-                        .desired_width(f32::INFINITY)
-                        .show(ui);
-                    ui.horizontal(|ui| {
-                        if ui.button("Fetch").clicked() {
-                            self.cmd(Command::Fetch((
-                                self.receiver_ticket.clone(),
-                                self.download_path.clone(),
-                            )));
-                            self.mode = AppMode::FetchProgess;
-                        };
-                        if ui.button("Fetch Into...").clicked() {
-                            if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                                self.picked_path = Some(path.clone());
-                                self.cmd(Command::Fetch((
-                                    self.receiver_ticket.clone(),
-                                    path.clone(),
-                                )));
-                                self.mode = AppMode::FetchProgess;
-                            }
-                        };
-                    });
+                    self.fetch_box(ui);
                 }
                 AppMode::SendProgress => {
                     ui.label("Sending");
                 }
                 AppMode::FetchProgess => {
-                    // let prog_val = (self.progress_current as f32) / (self.progress_total as f32);
-                    // let progress_bar = egui::ProgressBar::new(prog_val)
-                    //     .text(&self.progress_text)
-                    //     .show_percentage();
-                    // ui.add(progress_bar);
-                    // // Add a list of the messages.
-                    // if prog_val == 1.0 {
-                    //     self.progress_current = 0;
-                    //     self.progress_total = 0;
-                    //     self.mode = AppMode::Idle;
-                    // }
                 }
                 AppMode::Finished => {
                     self.reset();
                 }
             }
 
-            // Show the current messages
-            self.show_messages(ui);
             // Show the current progress bars
             self.show_progress(ui);
+            // Show the current messages
+            self.show_messages(ui);
             ui.separator();
             // Temp reset button
             if ui.button("Reset").clicked() {
@@ -255,6 +222,33 @@ impl AppState {
         });
     }
 
+    fn fetch_box(&mut self, ui: &mut Ui) {
+        ui.small("Blob ticket.");
+        ui.add_space(8.);
+        let _ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
+            .desired_width(f32::INFINITY)
+            .show(ui);
+        ui.horizontal(|ui| {
+            if ui.button("Fetch").clicked() {
+                self.cmd(Command::Fetch((
+                    self.receiver_ticket.clone(),
+                    self.config.download_path.clone(),
+                )));
+                self.mode = AppMode::FetchProgess;
+            };
+            if ui.button("Fetch Into...").clicked() {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    self.picked_path = Some(path.clone());
+                    self.cmd(Command::Fetch((
+                        self.receiver_ticket.clone(),
+                        path.clone(),
+                    )));
+                    self.mode = AppMode::FetchProgess;
+                }
+            };
+        });
+    }
+    
     // Reset the application
     fn reset(&mut self) {
         self.mode = AppMode::Idle;
