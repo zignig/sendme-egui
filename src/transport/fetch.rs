@@ -27,8 +27,8 @@ pub async fn receive(ticket: String, target: PathBuf, mut mess: &mut MessageOut)
         return Err(anyhow!("Empty Blob"));
     }
     let ticket = BlobTicket::from_str(ticket.as_str())?;
-    // mess.correct(format!("nodeid : {:?}", ticket.node_addr().node_id).as_str())        .await?;
-    // mess.correct(format!("hash : {:?}", ticket.hash()).as_str())        .await?;
+
+    // TODO move these up into the worker.
     let addr = ticket.node_addr().clone();
     let secret_key = super::get_or_create_secret()?;
     let mut builder = Endpoint::builder()
@@ -43,6 +43,7 @@ pub async fn receive(ticket: String, target: PathBuf, mut mess: &mut MessageOut)
     mess.info("Local endpoint created...").await?;
 
     // Use a local user data folder
+    // TODO move this up into the worker
     let iroh_data_dir = match BaseDirs::new() {
         Some(base_dirs) => base_dirs
             .data_dir()
@@ -51,7 +52,9 @@ pub async fn receive(ticket: String, target: PathBuf, mut mess: &mut MessageOut)
             .join("blob_data"),
         None => return Err(anyhow!("Can't create data directory")),
     };
-    println!("{:#?}", iroh_data_dir);
+
+    mess.info(format!("data: {:#?}", iroh_data_dir.display()).as_str()).await?;
+
     let db = iroh_blobs::store::fs::FsStore::load(&iroh_data_dir).await?;
     let db2 = db.clone();
     warn!("Node built");
