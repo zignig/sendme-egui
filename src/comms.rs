@@ -16,6 +16,7 @@ pub enum Event {
     Message(MessageDisplay),
     Progress((String, usize, usize)),
     ProgressFinished(String),
+    Tick(usize),
     Finished,
 }
 
@@ -117,6 +118,12 @@ impl MessageOut {
         self.emit(Event::ProgressFinished(name.to_string())).await?;
         Ok(())
     }
+
+    pub async fn tick(&self, since: usize) -> Result<()> {
+        self.emit(Event::Tick(since)).await?;
+        Ok(())
+    }
+
 }
 
 // Message formatting

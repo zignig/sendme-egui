@@ -2,11 +2,12 @@
 // Worker
 // --------------------------
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use crate::comms::{Command, Event, MessageOut};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
+use tokio::time::{Instant, interval};
 use tracing::{info, warn};
 
 use crate::transport::{receive, send};
@@ -15,6 +16,7 @@ pub struct Worker {
     // pub event_tx: Sender<Event>,
     // TODO add worker state
     pub mess: MessageOut,
+    pub start_time: Instant,
 }
 
 pub struct WorkerHandle {
@@ -55,6 +57,7 @@ impl Worker {
         Ok(Self {
             command_rx,
             mess: MessageOut::new(ev_tx_clone),
+            start_time: Instant::now(),
         })
     }
 
@@ -62,6 +65,7 @@ impl Worker {
         // the actual runner for the worker
         // TODO add elapsed timer ticker, send message to the gui.
         info!("Starting  the worker");
+        let mut interval = interval(Duration::from_millis(1000));
         loop {
             tokio::select! {
                 command = self.command_rx.recv() => {
@@ -71,10 +75,13 @@ impl Worker {
                         warn!("command failed {err}");
                     }
                 }
+                _ = interval.tick() => {
+                    let since = self.start_time.elapsed().as_secs() as usize;
+                    self.mess.tick(since).await?;
+                }
             }
         }
     }
-
     // handle the incoming commands from the egui
     async fn handle_command(&mut self, command: Command) -> Result<()> {
         match command {
@@ -99,7 +106,6 @@ impl Worker {
             Command::SetUpdateCallBack { callback } => {
                 //  Set up  the callback
                 self.mess.set_callback(callback);
-                self.mess.info("setting callback").await?;
                 return Ok(());
             }
         }

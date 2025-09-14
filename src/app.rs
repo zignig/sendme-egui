@@ -65,6 +65,7 @@ struct AppState {
     progress: ProgressList,
     messages: Vec<MessageDisplay>,
     config: Config,
+    elapsed: usize,
 }
 
 // Make the egui impl for display
@@ -101,6 +102,7 @@ impl App {
             progress: ProgressList::new(),
             messages: Vec::new(),
             config: config,
+            elapsed: 0,
         };
         let app = App {
             is_first_update: true,
@@ -132,6 +134,10 @@ impl AppState {
                     // self.reset();
                 }
                 Event::ProgressFinished(name) => self.progress.complete(name),
+                Event::Tick(seconds) => {
+                    // Update ticks
+                    self.elapsed = seconds;
+                }
             }
         }
 
@@ -161,6 +167,21 @@ impl AppState {
             }
         }
         // The actual gui
+
+        // Status bar at the bottom
+        egui::TopBottomPanel::bottom("status bar").show(ctx, |ui| {
+            ui.add_space(5.);
+            ui.horizontal(|ui| {
+                if ui.button("Reset").clicked() {
+                    self.reset();
+                }
+                ui.add_space(6.);
+                ui.label(format!("[ {:} ]", self.elapsed));
+            });
+            ui.add_space(5.);
+        });
+
+        // Main panel
         egui::CentralPanel::default().show(ctx, |ui| {
             // Main buttons
             ui.vertical_centered(|ui| ui.heading("Sendme"));
@@ -218,15 +239,11 @@ impl AppState {
             // Show the current progress bars
             self.show_progress(ui);
             ui.separator();
-            // Temp reset button
-            if ui.button("Reset").clicked() {
-                self.reset();
-            }
         });
     }
 
     fn fetch_box(&mut self, ui: &mut Ui) {
-        ui.small("Blob ticket.");
+        ui.label("Blob ticket...");
         ui.add_space(8.);
         let _ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
             .desired_width(f32::INFINITY)
@@ -268,12 +285,14 @@ impl AppState {
         ui.add_space(4.);
         // let text_style = egui::TextStyle::Body;
         // let row_height = ui.text_style_height(&text_style);
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for message in self.messages.iter() { 
-                message.show(ui);
-                ui.add_space(4.);
-            };
-        });
+        egui::ScrollArea::vertical()
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                for message in self.messages.iter() {
+                    message.show(ui);
+                    ui.add_space(4.);
+                }
+            });
     }
 
     fn cmd(&self, command: Command) {
