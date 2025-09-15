@@ -66,6 +66,11 @@ impl Worker {
     async fn run(&mut self) -> Result<()> {
         // the actual runner for the worker
         // TODO add elapsed timer ticker, send message to the gui.
+
+        // TODO
+        // I think this needs to be a join rather than a select
+        // get both going at the same time.
+
         info!("Starting  the worker");
         let mut interval = interval(Duration::from_millis(1000));
         loop {
@@ -78,7 +83,7 @@ impl Worker {
                     }
                 }
                 _ = interval.tick() => {
-                    info!("Tick");
+                    // info!("Tick");
                     if self.running {
                         let since = self.start_time.elapsed().as_secs();
                         self.mess.tick(since).await?;
@@ -91,7 +96,8 @@ impl Worker {
     // handle the incoming commands from the egui
     async fn handle_command(&mut self, command: Command) -> Result<()> {
         match command {
-            // TODO just for now
+            // TODO move the update callback here and get rid of
+            // the update message
             Command::Setup => {
                 self.mess.correct("Ready...").await?;
                 // self.mess.info("info").await?;
