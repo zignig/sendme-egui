@@ -22,7 +22,7 @@ use tracing::{info, warn};
 use iroh::{Endpoint, RelayMode, discovery::dns::DnsDiscovery};
 
 // fetch a blob from the iroh network
-pub async fn receive(ticket: String, target: PathBuf, mut mess: &mut MessageOut) -> Result<()> {
+pub async fn receive(ticket: String, target: PathBuf, mess : MessageOut) -> Result<()> {
     if ticket == "".to_string() {
         return Err(anyhow!("Empty Blob"));
     }
@@ -115,7 +115,7 @@ pub async fn receive(ticket: String, target: PathBuf, mut mess: &mut MessageOut)
             (Stats::default(), total_files, payload_bytes)
         };
         let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
-        export(&db, collection, target, &mut mess).await?;
+        export(&db, collection, target,mess.clone()).await?;
         anyhow::Ok((total_files, payload_size, stats))
     };
     // Follow the files and wait for event
@@ -142,7 +142,7 @@ pub async fn export(
     db: &Store,
     collection: Collection,
     target_dir: PathBuf,
-    mess: &mut MessageOut,
+    mess:MessageOut,
 ) -> Result<()> {
     let len = collection.len();
     for (i, (name, hash)) in collection.iter().enumerate() {

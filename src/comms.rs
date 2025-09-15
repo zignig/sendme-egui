@@ -1,7 +1,9 @@
 // Comms between the gui and  the worker in it's own module.
 // Some of this lives on both sides ( be careful )
 
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap, ops::{Deref, DerefMut}, path::PathBuf, rc::Rc, sync::Arc
+};
 
 use anyhow::Result;
 use async_channel::Sender;
@@ -16,7 +18,8 @@ pub enum Event {
     Message(MessageDisplay),
     Progress((String, usize, usize)),
     ProgressFinished(String),
-    Tick(usize),
+    Tick(u64),
+    StopTick,
     Finished,
 }
 
@@ -44,9 +47,10 @@ pub struct MessageDisplay {
 }
 
 // Messaging
+#[derive(Clone)]
 pub struct MessageOut {
     event_tx: Sender<Event>,
-    callback: Option<UpdateCallback>,
+    callback: Option<Rc<UpdateCallback>>,
 }
 
 impl MessageOut {
@@ -58,7 +62,7 @@ impl MessageOut {
     }
 
     pub fn set_callback(&mut self, callback: UpdateCallback) {
-        self.callback = Some(callback);
+        self.callback = Some(callback.into());
     }
 
     async fn emit(&self, event: Event) -> Result<()> {
@@ -119,11 +123,15 @@ impl MessageOut {
         Ok(())
     }
 
-    pub async fn tick(&self, since: usize) -> Result<()> {
+    pub async fn tick(&self, since: u64) -> Result<()> {
         self.emit(Event::Tick(since)).await?;
         Ok(())
     }
 
+    pub async fn reset_timer(&self) -> Result<()> {
+        self.emit(Event::StopTick).await?;
+        Ok(())
+    }
 }
 
 // Message formatting

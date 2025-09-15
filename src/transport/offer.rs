@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use walkdir::WalkDir;
 
 // Mock of offser folder in iroh-blobs
-pub async fn send(path: PathBuf,mess: &mut MessageOut) -> Result<()> {
+pub async fn send(path: PathBuf,mess: MessageOut) -> Result<()> {
     let files = WalkDir::new(path.clone()).into_iter();
     for file in files {
         if let Ok(file) = file {

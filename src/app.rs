@@ -65,7 +65,7 @@ struct AppState {
     progress: ProgressList,
     messages: Vec<MessageDisplay>,
     config: Config,
-    elapsed: usize,
+    elapsed: Option<u64>,
 }
 
 // Make the egui impl for display
@@ -102,7 +102,7 @@ impl App {
             progress: ProgressList::new(),
             messages: Vec::new(),
             config: config,
-            elapsed: 0,
+            elapsed: None,
         };
         let app = App {
             is_first_update: true,
@@ -135,8 +135,10 @@ impl AppState {
                 }
                 Event::ProgressFinished(name) => self.progress.complete(name),
                 Event::Tick(seconds) => {
-                    // Update ticks
-                    self.elapsed = seconds;
+                    self.elapsed = Some(seconds);
+                }
+                Event::StopTick => {
+                    self.elapsed = None;
                 }
             }
         }
@@ -176,7 +178,9 @@ impl AppState {
                     self.reset();
                 }
                 ui.add_space(6.);
-                ui.label(format!("[ {:} ]", self.elapsed));
+                if let Some(elapsed_seconds) = self.elapsed {
+                    ui.label(format_seconds_as_hms(elapsed_seconds));
+                }
             });
             ui.add_space(5.);
         });
@@ -301,4 +305,11 @@ impl AppState {
             .send_blocking(command)
             .expect("Worker is not responding");
     }
+}
+
+fn format_seconds_as_hms(total_seconds: u64) -> String {
+    let hours = total_seconds / 3600;
+    let minutes = (total_seconds % 3600) / 60;
+    let seconds = total_seconds % 60;
+    format!("[{:02}:{:02}:{:02}]", hours, minutes, seconds)
 }

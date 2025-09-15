@@ -17,6 +17,7 @@ pub struct Worker {
     // TODO add worker state
     pub mess: MessageOut,
     pub start_time: Instant,
+    pub running: bool,
 }
 
 pub struct WorkerHandle {
@@ -58,6 +59,7 @@ impl Worker {
             command_rx,
             mess: MessageOut::new(ev_tx_clone),
             start_time: Instant::now(),
+            running: false,
         })
     }
 
@@ -76,12 +78,16 @@ impl Worker {
                     }
                 }
                 _ = interval.tick() => {
-                    let since = self.start_time.elapsed().as_secs() as usize;
-                    self.mess.tick(since).await?;
+                    info!("Tick");
+                    if self.running {
+                        let since = self.start_time.elapsed().as_secs();
+                        self.mess.tick(since).await?;
+                    }
                 }
             }
         }
     }
+
     // handle the incoming commands from the egui
     async fn handle_command(&mut self, command: Command) -> Result<()> {
         match command {
@@ -94,13 +100,22 @@ impl Worker {
             }
             // This needs commands to finish
             Command::Send(path) => {
-                send(path, &mut self.mess).await?;
+                send(path, self.mess.clone()).await?;
                 return Ok(());
             }
             Command::Fetch((ticket, target)) => {
                 let target_path = PathBuf::from(target);
-                receive(ticket, target_path, &mut self.mess).await?;
-                self.mess.finished().await?;
+                self.start_timer().await?;
+                match receive(ticket, target_path, self.mess.clone()).await {
+                    Ok(_) => {
+                        self.reset_timer().await?;
+                        self.mess.finished().await?;
+                    }
+                    Err(err) => {
+                        self.reset_timer().await?;
+                        return Err(err);
+                    }
+                };
                 return Ok(());
             }
             Command::SetUpdateCallBack { callback } => {
@@ -109,5 +124,19 @@ impl Worker {
                 return Ok(());
             }
         }
+    }
+
+    async fn start_timer(&mut self) -> Result<()> {
+        warn!("Start Time");
+        self.start_time = Instant::now();
+        self.running = true;
+        Ok(())
+    }
+
+    async fn reset_timer(&mut self) -> Result<()> {
+        warn!("stop timer");
+        self.running = false;
+        self.mess.reset_timer().await?;
+        Ok(())
     }
 }
