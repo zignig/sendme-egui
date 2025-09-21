@@ -7,17 +7,18 @@ use std::{path::PathBuf, time::Duration};
 use crate::comms::{Command, Event, MessageOut};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
+use time::Time;
 use tokio::time::{Instant, interval};
 use tracing::{info, warn};
 
 use crate::transport::{receive, send};
+
 pub struct Worker {
     pub command_rx: Receiver<Command>,
     // pub event_tx: Sender<Event>,
     // TODO add worker state
     pub mess: MessageOut,
-    pub start_time: Instant,
-    pub running: bool,
+    pub timer_out: Sender<TimerCommands>,
 }
 
 pub struct WorkerHandle {
@@ -54,12 +55,17 @@ impl Worker {
         command_rx: async_channel::Receiver<Command>,
         event_tx: async_channel::Sender<Event>,
     ) -> Result<Self> {
-        let ev_tx_clone = event_tx.clone();
+        let mess = MessageOut::new(event_tx.clone());
+        // Timer
+        let m2 = mess.clone();
+        let (timer_out, timer_in) = async_channel::bounded(16);
+        let timer = TimerTask::new(m2);
+        timer.run(timer_in);
+
         Ok(Self {
             command_rx,
-            mess: MessageOut::new(ev_tx_clone),
-            start_time: Instant::now(),
-            running: true,
+            mess,
+            timer_out: timer_out,
         })
     }
 
@@ -75,18 +81,7 @@ impl Worker {
 
         // TODO strip this out into a separate function
         // with it's own async channel.
-        
-        let mut interval = interval(Duration::from_millis(1000));
-        let m2 = self.mess.clone();
-        let _ = tokio::spawn(async move {
-            let start_time = Instant::now();
-            loop {
-                interval.tick().await;
-                // info!("tick");
-                    let since = start_time.elapsed().as_secs();
-                    m2.tick(since).await;
-            }
-        });
+
         loop {
             tokio::select! {
                 command = self.command_rx.recv() => {
@@ -131,25 +126,62 @@ impl Worker {
                     }
                 };
                 return Ok(());
-            } // Command::SetUpdateCallBack { callback } => {
-              //     //  Set up  the callback
-              //     self.mess.set_callback(callback);
-              //     return Ok(());
-              // }
+            }
         }
     }
 
     async fn start_timer(&mut self) -> Result<()> {
         warn!("Start Time");
-        self.start_time = Instant::now();
-        self.running = true;
+        self.timer_out.send(TimerCommands::Start).await?;
         Ok(())
     }
 
     async fn reset_timer(&mut self) -> Result<()> {
         warn!("stop timer");
-        self.running = false;
-        self.mess.reset_timer().await?;
+        self.timer_out.send(TimerCommands::Reset).await?;
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub enum TimerCommands {
+    Start,
+    Reset,
+}
+
+pub struct TimerTask {
+    mess: MessageOut,
+}
+
+impl TimerTask {
+    pub fn new(mess: MessageOut) -> Self {
+        Self { mess }
+    }
+
+    pub fn run(self, incoming: Receiver<TimerCommands>) {
+        let _ = tokio::spawn(async move {
+            let mut interval = interval(Duration::from_millis(1000));
+            let mut running = true;
+            let mess = self.mess.clone();
+            let mut start_time = Instant::now();
+            loop {
+                tokio::select! {
+                    command  = incoming.recv() => {
+                       let command = command.unwrap() ;
+                       info!("{:?}",command);
+                       match command {
+                        TimerCommands::Start => { start_time = Instant::now(); running = true;},
+                        TimerCommands::Reset => { running = false ; mess.reset_timer().await; } ,
+                      };
+                    }
+                    _ = interval.tick() => {
+                    if running {
+                        let since = start_time.elapsed().as_secs();
+                        mess.tick(since).await;
+                    }
+                    }
+                }
+            }
+        });
     }
 }

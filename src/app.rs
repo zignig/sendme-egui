@@ -1,6 +1,7 @@
 // The application egui front end
 
 use core::f32;
+use std::fmt::Display;
 use std::path::PathBuf;
 
 use crate::comms::{Command, Event, MessageDisplay, ProgressList};
@@ -54,6 +55,21 @@ enum AppMode {
     Fetch,
     FetchProgess,
     Finished,
+}
+
+impl Display for AppMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let val = match self {
+            AppMode::Init => "Init",
+            AppMode::Idle => "Idle",
+            AppMode::Send => "Send",
+            AppMode::SendProgress => "Send Running",
+            AppMode::Fetch => "Fetch",
+            AppMode::FetchProgess => "Fetch Running",
+            AppMode::Finished => "Finished",
+        };
+        write!(f,"{}",val)
+    }
 }
 
 // Internal state for the application
@@ -178,9 +194,12 @@ impl AppState {
                     self.reset();
                 }
                 ui.add_space(6.);
-                if let Some(elapsed_seconds) = self.elapsed {
-                    ui.label(format_seconds_as_hms(elapsed_seconds));
-                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if let Some(elapsed_seconds) = self.elapsed {
+                        ui.label(format_seconds_as_hms(elapsed_seconds));
+                    }
+                    ui.label(format!(" {} ",self.mode));
+                });
             });
             ui.add_space(5.);
         });
@@ -217,8 +236,7 @@ impl AppState {
             ui.separator();
             // Show mode based widgets
             match self.mode {
-                AppMode::Init => {
-                }
+                AppMode::Init => {}
                 AppMode::Idle => {
                     self.fetch_box(ui);
                 }
@@ -295,7 +313,6 @@ impl AppState {
             .show(ui, |ui| {
                 for message in self.messages.iter() {
                     message.show(ui);
-                    ui.add_space(4.);
                 }
             });
     }
