@@ -59,7 +59,7 @@ impl Worker {
             command_rx,
             mess: MessageOut::new(ev_tx_clone),
             start_time: Instant::now(),
-            running: false,
+            running: true,
         })
     }
 
@@ -72,7 +72,21 @@ impl Worker {
         // get both going at the same time.
 
         info!("Starting  the worker");
+
+        // TODO strip this out into a separate function
+        // with it's own async channel.
+        
         let mut interval = interval(Duration::from_millis(1000));
+        let m2 = self.mess.clone();
+        let _ = tokio::spawn(async move {
+            let start_time = Instant::now();
+            loop {
+                interval.tick().await;
+                // info!("tick");
+                    let since = start_time.elapsed().as_secs();
+                    m2.tick(since).await;
+            }
+        });
         loop {
             tokio::select! {
                 command = self.command_rx.recv() => {
@@ -80,13 +94,6 @@ impl Worker {
                     if let Err(err ) = self.handle_command(command).await{
                         self.mess.error(format!("{}",err).as_str()).await?;
                         warn!("command failed {err}");
-                    }
-                }
-                _ = interval.tick() => {
-                    // info!("Tick");
-                    if self.running {
-                        let since = self.start_time.elapsed().as_secs();
-                        self.mess.tick(since).await?;
                     }
                 }
             }
@@ -98,7 +105,8 @@ impl Worker {
         match command {
             // TODO move the update callback here and get rid of
             // the update message
-            Command::Setup => {
+            Command::Setup { callback } => {
+                let _ = self.mess.set_callback(callback).await?;
                 self.mess.correct("Ready...").await?;
                 // self.mess.info("info").await?;
                 // self.mess.error("error").await?;
@@ -123,12 +131,11 @@ impl Worker {
                     }
                 };
                 return Ok(());
-            }
-            Command::SetUpdateCallBack { callback } => {
-                //  Set up  the callback
-                self.mess.set_callback(callback);
-                return Ok(());
-            }
+            } // Command::SetUpdateCallBack { callback } => {
+              //     //  Set up  the callback
+              //     self.mess.set_callback(callback);
+              //     return Ok(());
+              // }
         }
     }
 

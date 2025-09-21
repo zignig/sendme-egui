@@ -2,13 +2,18 @@
 // Some of this lives on both sides ( be careful )
 
 use std::{
-    collections::BTreeMap, ops::{Deref, DerefMut}, path::PathBuf, rc::Rc, sync::Arc
+    collections::BTreeMap,
+    path::PathBuf,
+    sync::{Arc},
 };
 
 use anyhow::Result;
 use async_channel::Sender;
-use eframe::egui;
+use eframe::egui::{self};
+
 use egui::{Color32, Ui};
+use tokio::sync::Mutex;
+use tracing::info;
 
 // Update Callback
 type UpdateCallback = Box<dyn Fn() + Send + 'static>;
@@ -25,10 +30,9 @@ pub enum Event {
 
 // Outgoing Commands
 pub enum Command {
-    Setup,
+    Setup { callback: UpdateCallback },
     Send(PathBuf),
     Fetch((String, PathBuf)),
-    SetUpdateCallBack { callback: UpdateCallback },
 }
 
 // Message types
@@ -48,28 +52,33 @@ pub struct MessageDisplay {
 
 // Messaging
 #[derive(Clone)]
-pub struct MessageOut {
+pub struct MessageOut(Arc<Mutex<MessageInner>>);
+
+pub struct MessageInner {
     event_tx: Sender<Event>,
-    callback: Option<Rc<UpdateCallback>>,
+    callback: Option<UpdateCallback>,
 }
 
 impl MessageOut {
     pub fn new(event_tx: Sender<Event>) -> Self {
-        Self {
+        Self(Arc::new(Mutex::new(MessageInner {
             event_tx,
             callback: None,
-        }
+        })))
     }
 
-    pub fn set_callback(&mut self, callback: UpdateCallback) {
-        self.callback = Some(callback.into());
+    pub async fn set_callback(&self, callback: UpdateCallback) -> Result<()> {
+        let mut value = self.0.lock().await;
+        value.callback = Some(callback);
+        Ok(())
     }
 
     async fn emit(&self, event: Event) -> Result<()> {
-        if let Some(callback) = &self.callback {
+        let binding = self.0.lock().await;
+        if let Some(callback) = &binding.callback {
             callback();
         }
-        self.event_tx.send(event).await?;
+        binding.event_tx.send(event).await.unwrap();
         Ok(())
     }
 

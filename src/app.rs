@@ -79,7 +79,7 @@ impl eframe::App for App {
             };
             let ctx = ctx.clone();
             let callback = Box::new(move || ctx.request_repaint());
-            self.state.cmd(Command::SetUpdateCallBack { callback });
+            self.state.cmd(Command::Setup { callback });
         }
         self.state.update(ctx);
     }
@@ -94,6 +94,7 @@ impl App {
         let config = confy::load("sendme-egui", None).unwrap_or_default();
         let path = confy::get_configuration_file_path("sendme-egui", None);
         info!("config path {:?}", path);
+
         let state = AppState {
             picked_path: None,
             worker: handle,
@@ -150,7 +151,6 @@ impl AppState {
         // Use the mode to enable and disable
         match self.mode {
             AppMode::Init => {
-                self.cmd(Command::Setup);
                 self.mode = AppMode::Idle;
             }
             AppMode::Idle => {}
@@ -217,7 +217,8 @@ impl AppState {
             ui.separator();
             // Show mode based widgets
             match self.mode {
-                AppMode::Init => {}
+                AppMode::Init => {
+                }
                 AppMode::Idle => {
                     self.fetch_box(ui);
                 }
