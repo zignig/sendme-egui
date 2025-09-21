@@ -64,6 +64,7 @@ enum AppMode {
     Fetch,
     FetchProgess,
     Finished,
+    Config,
 }
 
 impl Display for AppMode {
@@ -76,6 +77,7 @@ impl Display for AppMode {
             AppMode::Fetch => "Fetch",
             AppMode::FetchProgess => "Fetch Running",
             AppMode::Finished => "Finished",
+            AppMode::Config => "Config",
         };
         write!(f, "{}", val)
     }
@@ -192,6 +194,10 @@ impl AppState {
             AppMode::Finished => {
                 self.mode = AppMode::Idle;
             }
+            AppMode::Config => { 
+                send_enabled = false;
+                receive_enabled = false;
+            }
         }
         // The actual gui
 
@@ -264,6 +270,9 @@ impl AppState {
                 AppMode::FetchProgess => {}
                 AppMode::Finished => {
                     // self.reset();
+                }
+                AppMode::Config => { 
+                    // config editor
                 }
             }
             // Show the current messages
