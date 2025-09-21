@@ -1,11 +1,7 @@
 // Comms between the gui and  the worker in it's own module.
 // Some of this lives on both sides ( be careful )
 
-use std::{
-    collections::BTreeMap,
-    path::PathBuf,
-    sync::{Arc},
-};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 use async_channel::Sender;
@@ -13,7 +9,6 @@ use eframe::egui::{self};
 
 use egui::{Color32, Ui};
 use tokio::sync::Mutex;
-use tracing::info;
 
 // Update Callback
 type UpdateCallback = Box<dyn Fn() + Send + 'static>;
@@ -23,6 +18,7 @@ pub enum Event {
     Message(MessageDisplay),
     Progress((String, usize, usize)),
     ProgressFinished(String),
+    ProgressComplete(String),
     Tick(u64),
     StopTick,
     Finished,
@@ -132,6 +128,12 @@ impl MessageOut {
         Ok(())
     }
 
+    pub async fn progress_finish(&self, name: &str) -> Result<()> {
+        // info!("progress {} / {} ",current,total);
+        self.emit(Event::ProgressComplete(name.to_string())).await?;
+        Ok(())
+    }
+
     pub async fn tick(&self, since: u64) -> Result<()> {
         self.emit(Event::Tick(since)).await?;
         Ok(())
@@ -233,6 +235,10 @@ impl ProgressList {
         if let Some(item) = self.bars.get_mut(&name) {
             item.complete = true;
         }
+    }
+
+    pub fn finish(&mut self, name: String) {
+        self.bars.remove(&name);
     }
 
     pub fn show(&self, ui: &mut Ui) {

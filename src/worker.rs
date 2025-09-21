@@ -8,7 +8,6 @@ use crate::comms::{Command, Event, MessageOut};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use iroh_blobs::store::fs::FsStore;
-use time::Time;
 use tokio::time::{Instant, interval};
 use tracing::{info, warn};
 
@@ -106,7 +105,17 @@ impl Worker {
             }
             // This needs commands to finish
             Command::Send(path) => {
-                send(path, self.mess.clone()).await?;
+                self.start_timer().await?;
+                match send(path, self.mess.clone(),self.store.clone()).await {
+                    Ok(_) => {
+                       self.reset_timer().await?;
+                       self.mess.finished().await?
+                    }
+                    Err(err) => {
+                        self.reset_timer().await?;
+                        return Err(err)
+                    },
+                }
                 return Ok(());
             }
             Command::Fetch((ticket, target)) => {
@@ -162,7 +171,7 @@ impl TimerTask {
     pub fn run(self, incoming: Receiver<TimerCommands>) {
         let _ = tokio::spawn(async move {
             let mut interval = interval(Duration::from_millis(1000));
-            let mut running = false;
+            let mut running = true;
             let mess = self.mess.clone();
             let mut start_time = Instant::now();
             loop {

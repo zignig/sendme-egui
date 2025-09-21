@@ -16,7 +16,6 @@ use n0_future::StreamExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use tokio::select;
 use tracing::{info, warn};
 
 use iroh::{Endpoint, RelayMode, discovery::dns::DnsDiscovery};
@@ -42,65 +41,71 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
     let endpoint = builder.bind().await?;
     mess.info("Local endpoint created...").await?;
 
-    let db2 = db.clone();
+    // let db2 = db.clone();
     warn!("Node built");
 
     // Now run the fetch
-    let hash_and_format = ticket.hash_and_format();
-    info!("computing local");
-    let local = db.remote().local(hash_and_format).await?;
-    info!("got local");
-    let (stats, total_files, payload_size) = if !local.is_complete() {
-        mess.info("Incomplete Download").await?;
-        let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
-        mess.correct("Connection Established").await?;
-        let (_hash_seq, sizes) =
-            get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
+    let (stats, total_files, payload_size) = {
+        let hash_and_format = ticket.hash_and_format();
+        info!("computing local");
+        let local = db.remote().local(hash_and_format).await?;
+        info!("got local");
+        let (stats, total_files, payload_size) = if !local.is_complete() {
+            mess.info("Incomplete Download").await?;
+            let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
+            mess.correct("Connection Established").await?;
+            let (_hash_seq, sizes) =
+                get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
+                    .await?;
+            // .map_err(show_get_error)?;
+            let total_size = sizes.iter().copied().sum::<u64>();
+            let payload_size = sizes.iter().skip(2).copied().sum::<u64>();
+            let total_files = (sizes.len().saturating_sub(1)) as u64;
+            mess.info(format!("total size: {}", format_size(total_size, DECIMAL)).as_str())
                 .await?;
-        // .map_err(show_get_error)?;
-        let total_size = sizes.iter().copied().sum::<u64>();
-        let payload_size = sizes.iter().skip(2).copied().sum::<u64>();
-        let total_files = (sizes.len().saturating_sub(1)) as u64;
-        mess.info(format!("total size: {}", format_size(total_size, DECIMAL)).as_str())
-            .await?;
-        eprintln!(
-            "getting collection {} {} files, {}",
-            &ticket.hash().to_hex().to_string(),
-            total_files,
-            payload_size
-        );
-        // Fetch the file
-        let get = db.remote().execute_get(connection, local.missing());
-        let stats = Stats::default();
-        let mut stream = get.stream();
-        while let Some(item) = stream.next().await {
-            match item {
-                GetProgressItem::Progress(offset) => {
-                    // info!("{:#?}", offset);
-                    mess.progress("Download", offset as usize, payload_size as usize)
-                        .await?;
-                }
-                GetProgressItem::Done(value) => {
-                    // info!("Done {:#?}", value);
-                    mess.correct("Done").await?;
-                    mess.complete("Download").await?;
-                    mess.info(format!("bytes read {}", value.payload_bytes_read).as_str())
-                        .await?;
-                }
-                GetProgressItem::Error(_value) => {
-                    anyhow::bail!(anyhow!("stream"));
+            eprintln!(
+                "getting collection {} {} files, {}",
+                &ticket.hash().to_hex().to_string(),
+                total_files,
+                payload_size
+            );
+            // Fetch the file
+            let get = db.remote().execute_get(connection, local.missing());
+            let stats = Stats::default();
+            let mut stream = get.stream();
+            while let Some(item) = stream.next().await {
+                match item {
+                    GetProgressItem::Progress(offset) => {
+                        // info!("{:#?}", offset);
+                        mess.progress("Download", offset as usize, payload_size as usize)
+                            .await?;
+                    }
+                    GetProgressItem::Done(value) => {
+                        // info!("Done {:#?}", value);
+                        mess.correct("Done").await?;
+                        mess.complete("Download").await?;
+                        mess.info(format!("bytes read {}", value.payload_bytes_read).as_str())
+                            .await?;
+                    }
+                    GetProgressItem::Error(_value) => {
+                        anyhow::bail!(anyhow!("stream"));
+                    }
                 }
             }
-        }
+            (stats, total_files, payload_size)
+        } else {
+            mess.correct("Already Complete!").await?;
+            let total_files = local.children().unwrap() - 1;
+            let payload_bytes = 0;
+            (Stats::default(), total_files, payload_bytes)
+        };
+        let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
+        export(&db, collection, target, mess.clone()).await?;
         (stats, total_files, payload_size)
-    } else {
-        mess.correct("Already Complete!").await?;
-        let total_files = local.children().unwrap() - 1;
-        let payload_bytes = 0;
-        (Stats::default(), total_files, payload_bytes)
     };
-    let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
-    export(&db, collection, target, mess.clone()).await?;
+    mess.correct(format!("{:#?}", stats).as_str()).await?;
+    mess.correct(format!("{}", total_files).as_str()).await?;
+    mess.correct(format!("{}", payload_size).as_str()).await?;
     Ok(())
 }
 

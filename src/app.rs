@@ -13,7 +13,6 @@ use eframe::egui::{self, Visuals};
 use egui::Ui;
 use rfd;
 use serde_derive::{Deserialize, Serialize};
-use tracing::info;
 
 // Application saved config
 #[derive(Debug, Serialize, Deserialize)]
@@ -132,11 +131,13 @@ impl App {
             config: config,
             elapsed: None,
         };
+
         let app = App {
             is_first_update: true,
             state,
         };
-        // Rus the egui in the foreground
+
+        // Run the egui in the foreground
         eframe::run_native("sendme-egui", options, Box::new(|_cc| Ok(Box::new(app))))
     }
 }
@@ -162,6 +163,7 @@ impl AppState {
                     // self.reset();
                 }
                 Event::ProgressFinished(name) => self.progress.complete(name),
+                Event::ProgressComplete(name) => self.progress.finish(name),
                 Event::Tick(seconds) => {
                     self.elapsed = Some(seconds);
                 }
@@ -194,7 +196,7 @@ impl AppState {
             AppMode::Finished => {
                 self.mode = AppMode::Idle;
             }
-            AppMode::Config => { 
+            AppMode::Config => {
                 send_enabled = false;
                 receive_enabled = false;
             }
@@ -207,6 +209,9 @@ impl AppState {
             ui.horizontal(|ui| {
                 if ui.button("Reset").clicked() {
                     self.reset();
+                }
+                if ui.button("Config").clicked() {
+                    self.mode = AppMode::Config;
                 }
                 ui.add_space(6.);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -271,8 +276,14 @@ impl AppState {
                 AppMode::Finished => {
                     // self.reset();
                 }
-                AppMode::Config => { 
+                AppMode::Config => {
                     // config editor
+                    ui.label("Configuration");
+                    ui.checkbox(&mut self.config.dark_mode, "Darkmode");
+                    ui.separator();
+                    if ui.button("Save Config").clicked() {
+                        self.mode = AppMode::Idle;
+                    }
                 }
             }
             // Show the current messages
@@ -328,11 +339,29 @@ impl AppState {
         // let row_height = ui.text_style_height(&text_style);
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
+            .max_width(f32::INFINITY)
             .show(ui, |ui| {
-                for message in self.messages.iter() {
-                    message.show(ui);
-                }
+                let ui_builder = egui::UiBuilder::new();
+                ui.scope_builder(ui_builder, |ui| {
+                    egui::Grid::new("message_grid")
+                        .num_columns(1)
+                        .spacing([40.0, 4.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for message in self.messages.iter() {
+                                message.show(ui);
+                                ui.end_row();
+                            }
+                        });
+                });
             });
+        // egui::ScrollArea::vertical()
+        //     .stick_to_bottom(true)
+        //     .show(ui, |ui| {
+        //         for message in self.messages.iter() {
+        //             message.show(ui);
+        //         }
+        //     });
     }
 
     fn cmd(&self, command: Command) {
