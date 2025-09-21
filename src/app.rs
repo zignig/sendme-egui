@@ -45,7 +45,7 @@ impl Default for Config {
 }
 
 // Message list max
-const MESSAGE_MAX: usize = 300;
+const MESSAGE_MAX: usize = 50;
 
 // The application
 pub struct App {
@@ -72,9 +72,9 @@ impl Display for AppMode {
             AppMode::Init => "Init",
             AppMode::Idle => "Idle",
             AppMode::Send => "Send",
-            AppMode::SendProgress => "Send Running",
+            AppMode::SendProgress => "Send Running...",
             AppMode::Fetch => "Fetch",
-            AppMode::FetchProgess => "Fetch Running",
+            AppMode::FetchProgess => "Fetch Running...",
             AppMode::Finished => "Finished",
             AppMode::Config => "Config",
         };
@@ -139,12 +139,12 @@ impl App {
             state,
         };
 
-        // Run the egui in the foreground
+        // Run the egui in the foreground, worker as  a subthread (async)
         eframe::run_native("sendme-egui", options, Box::new(|_cc| Ok(Box::new(app))))
     }
 }
 
-// Actual gui code
+// Actual gui code (the interface)
 impl AppState {
     fn update(&mut self, ctx: &egui::Context) {
         // Events from the worker
@@ -166,6 +166,7 @@ impl AppState {
                 }
                 Event::ProgressFinished(name) => self.progress.complete(name),
                 Event::ProgressComplete(name) => self.progress.finish(name),
+                Event::ProgressClear => self.progress.clear(),
                 Event::Tick(seconds) => {
                     self.elapsed = Some(seconds);
                 }

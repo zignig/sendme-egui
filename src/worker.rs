@@ -103,7 +103,8 @@ impl Worker {
                     .await?;
                 return Ok(());
             }
-            // This needs commands to finish
+            // This needs commands to finish 
+            // TODO add a cancellation ticket in here.
             Command::Send(path) => {
                 self.start_timer().await?;
                 match send(path, self.mess.clone(), self.store.clone()).await {
@@ -118,6 +119,8 @@ impl Worker {
                 }
                 return Ok(());
             }
+            // This is working. 
+            // TODO needs a cancellation ticket too.
             Command::Fetch((ticket, target)) => {
                 let target_path = PathBuf::from(target);
                 self.start_timer().await?;
@@ -136,14 +139,18 @@ impl Worker {
         }
     }
 
+    // -----
+    // Timer functions 
+    //------
+    
     async fn start_timer(&mut self) -> Result<()> {
-        warn!("Start Time");
+        warn!("Start Timer");
         self.timer_out.send(TimerCommands::Start).await?;
         Ok(())
     }
 
     async fn reset_timer(&mut self) -> Result<()> {
-        warn!("stop timer");
+        warn!("Stop timer");
         self.timer_out.send(TimerCommands::Reset).await?;
         Ok(())
     }
@@ -163,6 +170,8 @@ pub struct TimerTask {
     mess: MessageOut,
 }
 
+// Runs as a seperate tokio task, boops every second
+// Only sends time if its running
 impl TimerTask {
     pub fn new(mess: MessageOut) -> Self {
         Self { mess }
@@ -170,6 +179,7 @@ impl TimerTask {
 
     pub fn run(self, incoming: Receiver<TimerCommands>) {
         let _ = tokio::spawn(async move {
+            // every second
             let mut interval = interval(Duration::from_millis(1000));
             let mut running = true;
             let mess = self.mess.clone();

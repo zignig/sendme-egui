@@ -27,7 +27,9 @@ use std::path::PathBuf;
 use tracing::info;
 use walkdir::WalkDir;
 
-// Mock of offser folder in iroh-blobs
+// Not a mock anymore , breakdown.
+// TODO , cancellation feed to stop.
+
 pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()> {
     // Import the files into the blob store
     let (tag, size, _collection) = import(path, &store, mess.clone()).await?;
@@ -85,7 +87,6 @@ async fn import(
         .map(|entry| {
             let entry = entry?;
             if !entry.file_type().is_file() {
-                // Skip symlinks. Directories are handled by WalkDir.
                 return Ok(None);
             }
             let path = entry.into_path();
@@ -102,13 +103,9 @@ async fn import(
     let mut names_and_tags = n0_future::stream::iter(data_sources)
         .map(|(name, path)| {
             let db = store.clone();
-            // let op = op.clone();
-            // let mp = mp.clone();
+            // This clones a mutex for each file , seems to work.
             let m = mess.clone();
             async move {
-                // op.inc(1);
-                // let pb = mp.add(make_import_item_progress());
-                // pb.set_message(format!("copying {name}"));
                 let import = db.add_path_with_opts(AddPathOptions {
                     path,
                     mode: ImportMode::TryReference,
@@ -121,35 +118,26 @@ async fn import(
                         .next()
                         .await
                         .context("import stream ended without a tag")?;
-                    // info!("importing {name} {item:?}");
                     match item {
                         AddProgressItem::Size(size) => {
                             item_size = size;
                             m.progress(name.as_str(), 0, item_size as usize).await?;
-                            // pb.set_length(size);
                         }
                         AddProgressItem::CopyProgress(offset) => {
-                            // pb.set_position(offset);
                             m.progress(name.as_str(), offset as usize, item_size as usize)
                                 .await?;
                         }
                         AddProgressItem::CopyDone => {
-                            // pb.set_message(format!("computing outboard {name}"));
-                            // pb.set_position(0);
                             m.complete(name.as_str()).await?;
-                            // m.progress_finish(name.as_str()).await?;
                         }
                         AddProgressItem::OutboardProgress(offset) => {
-                            // pb.set_position(offset);
                             m.progress(name.as_str(), offset as usize, item_size as usize)
                                 .await?;
                         }
                         AddProgressItem::Error(cause) => {
-                            // pb.finish_and_clear();
                             anyhow::bail!("error importing {}: {}", name, cause);
                         }
                         AddProgressItem::Done(tt) => {
-                            // pb.finish_and_clear();
                             m.progress_finish(name.as_str()).await?;
                             break tt;
                         }
@@ -180,6 +168,7 @@ async fn import(
     Ok((temp_tag, size, collection))
 }
 
+/// From original sendme.
 /// This function converts an already canonicalized path to a string.
 ///
 /// If `must_be_relative` is true, the function will fail if any component of the path is

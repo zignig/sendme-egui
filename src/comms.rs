@@ -19,6 +19,7 @@ pub enum Event {
     Progress((String, usize, usize)),
     ProgressFinished(String),
     ProgressComplete(String),
+    ProgressClear,
     Tick(u64),
     StopTick,
     Finished,
@@ -116,20 +117,17 @@ impl MessageOut {
     }
 
     pub async fn progress(&self, name: &str, current: usize, total: usize) -> Result<()> {
-        // info!("progress {} / {} ",current,total);
         self.emit(Event::Progress((name.to_string(), current, total)))
             .await?;
         Ok(())
     }
 
     pub async fn complete(&self, name: &str) -> Result<()> {
-        // info!("progress {} / {} ",current,total);
         self.emit(Event::ProgressFinished(name.to_string())).await?;
         Ok(())
     }
 
     pub async fn progress_finish(&self, name: &str) -> Result<()> {
-        // info!("progress {} / {} ",current,total);
         self.emit(Event::ProgressComplete(name.to_string())).await?;
         Ok(())
     }
