@@ -1,13 +1,19 @@
 // Share a file onto the blob network
 // TODO
 // rip send out of the sendme
+// This is a cut and paste from sendme bits that have been updated
+// to use message and progress bars
 
 use crate::comms::MessageOut;
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
 use futures_buffered::BufferedStreamExt;
+use iroh::Endpoint;
+use iroh::RelayMode;
+use iroh::discovery::dns::DnsDiscovery;
 use iroh_blobs::BlobFormat;
+use iroh_blobs::BlobsProtocol;
 use iroh_blobs::api::TempTag;
 use iroh_blobs::api::blobs::AddPathOptions;
 use iroh_blobs::api::blobs::AddProgressItem;
@@ -20,18 +26,38 @@ use std::path::Path;
 use std::path::PathBuf;
 use tracing::info;
 use walkdir::WalkDir;
+
 // Mock of offser folder in iroh-blobs
 pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()> {
-    let (tag, size, collection) = import(path, &store, mess.clone()).await?;
-    // for file in files {
-    //     if let Ok(file) = file {
-    //         mess.info(format!("{:?}", file.path().display()).as_str())
-    //             .await?;
-    //     };
-    // }
-    mess.correct(format!("{:?}",tag).as_str()).await?;
-    mess.correct(format!("{:?}",size).as_str()).await?;
-    mess.correct(format!("{:?}",collection).as_str()).await?;
+    // Import the files into the blob store
+    let (tag, size, _collection) = import(path, &store, mess.clone()).await?;
+
+    mess.correct(format!("{:?}", tag).as_str()).await?;
+    mess.correct(format!("{:?}", size).as_str()).await?;
+
+    // Create the endpoint.
+    let secret_key = super::get_or_create_secret()?;
+    let builder = Endpoint::builder()
+        .alpns(vec![iroh_blobs::protocol::ALPN.to_vec()])
+        .secret_key(secret_key)
+        .relay_mode(RelayMode::Default)
+        .add_discovery(DnsDiscovery::n0_dns());
+    let endpoint = builder.bind().await?;
+    mess.info("Local endpoint created...").await?;
+
+    // Attach the services
+    let blobs = BlobsProtocol::new(&store, endpoint.clone(), None);
+    let router = iroh::protocol::Router::builder(endpoint)
+        .accept(iroh_blobs::ALPN, blobs.clone())
+        .spawn();
+    let mut tags = blobs.tags().list().await?;
+    while let Some(event) = tags.next().await {
+        let event = event?;
+        info!("{} {}", event.name, event.hash);
+    }
+
+    // Create the ticket
+
     Err(anyhow!("Send Fail"))
 }
 
@@ -95,7 +121,7 @@ async fn import(
                         .next()
                         .await
                         .context("import stream ended without a tag")?;
-                    info!("importing {name} {item:?}");
+                    // info!("importing {name} {item:?}");
                     match item {
                         AddProgressItem::Size(size) => {
                             item_size = size;
@@ -111,10 +137,11 @@ async fn import(
                             // pb.set_message(format!("computing outboard {name}"));
                             // pb.set_position(0);
                             m.complete(name.as_str()).await?;
+                            // m.progress_finish(name.as_str()).await?;
                         }
                         AddProgressItem::OutboardProgress(offset) => {
                             // pb.set_position(offset);
-                            m.progress_finish(name.as_str())
+                            m.progress(name.as_str(), offset as usize, item_size as usize)
                                 .await?;
                         }
                         AddProgressItem::Error(cause) => {
@@ -123,6 +150,7 @@ async fn import(
                         }
                         AddProgressItem::Done(tt) => {
                             // pb.finish_and_clear();
+                            m.progress_finish(name.as_str()).await?;
                             break tt;
                         }
                     }

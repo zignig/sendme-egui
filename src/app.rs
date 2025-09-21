@@ -99,10 +99,12 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         if self.is_first_update {
             self.is_first_update = false;
-            ctx.set_zoom_factor(1.2);
+            ctx.set_zoom_factor(1.);
             if !self.state.config.dark_mode {
                 ctx.set_visuals(Visuals::light());
             };
+            // Push the redraw function into the worker.
+            // This is janky and has a mutex for borrowing reasons
             let ctx = ctx.clone();
             let callback = Box::new(move || ctx.request_repaint());
             self.state.cmd(Command::Setup { callback });
@@ -271,8 +273,16 @@ impl AppState {
                 }
                 AppMode::SendProgress => {
                     ui.label("Sending");
+                    ui.separator();
+                    if ui.button("Finish").clicked() { 
+                        // TODO Send cancel token to worker for send
+                        // clean and reset interfaces
+                    }
                 }
-                AppMode::FetchProgess => {}
+                AppMode::FetchProgess => {
+                    ui.label("Fetching ...");
+                    
+                }
                 AppMode::Finished => {
                     // self.reset();
                 }

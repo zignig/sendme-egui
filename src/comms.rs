@@ -190,7 +190,9 @@ impl ProgressBar {
         } else {
             (self.current as f32) / (self.total as f32)
         };
-        let mut progress_bar = egui::ProgressBar::new(prog_val).show_percentage();
+        let mut progress_bar = egui::ProgressBar::new(prog_val)
+            .show_percentage()
+            .desired_height(12.);
         if self.complete {
             progress_bar = progress_bar.fill(Color32::DARK_GREEN);
         }

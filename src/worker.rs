@@ -106,15 +106,15 @@ impl Worker {
             // This needs commands to finish
             Command::Send(path) => {
                 self.start_timer().await?;
-                match send(path, self.mess.clone(),self.store.clone()).await {
+                match send(path, self.mess.clone(), self.store.clone()).await {
                     Ok(_) => {
-                       self.reset_timer().await?;
-                       self.mess.finished().await?
+                        self.reset_timer().await?;
+                        self.mess.finished().await?
                     }
                     Err(err) => {
                         self.reset_timer().await?;
-                        return Err(err)
-                    },
+                        return Err(err);
+                    }
                 }
                 return Ok(());
             }
