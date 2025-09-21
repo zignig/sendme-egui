@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.99"
 async-channel = "2.5.0"
+chrono = "0.4.42"
 confy = "1.0.0"
 directories = "6.0.0"
 eframe = "0.32.1"

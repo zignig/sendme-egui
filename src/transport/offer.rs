@@ -8,6 +8,7 @@ use crate::comms::MessageOut;
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::anyhow;
+use chrono::Local;
 use futures_buffered::BufferedStreamExt;
 use iroh::Endpoint;
 use iroh::RelayMode;
@@ -24,7 +25,7 @@ use n0_future::StreamExt;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
-use tracing::info;
+// use tracing::info;
 use walkdir::WalkDir;
 
 // Not a mock anymore , breakdown.
@@ -32,7 +33,10 @@ use walkdir::WalkDir;
 
 pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()> {
     // Import the files into the blob store
-    let (tag, size, _collection) = import(path, &store, mess.clone()).await?;
+    let (tag, size, collection) = import(path, &store, mess.clone()).await?;
+    // Set a tag for later work
+    let dt = Local::now().to_rfc3339().to_owned();
+    store.tags().set(format!("outgoing-{}", dt), tag.hash().to_owned()).await?;
 
     mess.correct(format!("{:?}", tag).as_str()).await?;
     mess.correct(format!("{:?}", size).as_str()).await?;
@@ -52,11 +56,6 @@ pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()>
     let router = iroh::protocol::Router::builder(endpoint)
         .accept(iroh_blobs::ALPN, blobs.clone())
         .spawn();
-    let mut tags = blobs.tags().list().await?;
-    while let Some(event) = tags.next().await {
-        let event = event?;
-        info!("{} {}", event.name, event.hash);
-    }
 
     // Create the ticket
 

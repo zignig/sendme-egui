@@ -233,76 +233,88 @@ impl AppState {
             ui.vertical_centered(|ui| ui.heading("Sendme"));
             ui.separator();
             ui.add_space(5.);
-            ui.horizontal(|ui| {
-                ui.add_enabled_ui(receive_enabled, |ui| {
-                    if ui.button("Fetch...").clicked() {
-                        self.mode = AppMode::Fetch;
-                    }
-                });
-                ui.add_space(2.);
-                ui.add_enabled_ui(send_enabled, |ui| {
-                    if ui.button("Send Folder…").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_folder() {
-                            self.picked_path = Some(path);
-                        }
-                        self.mode = AppMode::Send;
-                    };
-                    if ui.button("Send File…").clicked() {
-                        if let Some(path) = rfd::FileDialog::new().pick_file() {
-                            self.picked_path = Some(path);
-                        }
-                        self.mode = AppMode::Send;
-                    };
-                });
-                // ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {});
-            });
+            self.button_header(send_enabled, receive_enabled, ui);
+
             ui.separator();
-            // Show mode based widgets
-            match self.mode {
-                AppMode::Init => {}
-                AppMode::Idle => {
-                    self.fetch_box(ui);
-                }
-                AppMode::Send => {
-                    if let Some(path) = &self.picked_path {
-                        self.cmd(Command::Send(path.to_owned()));
-                        self.mode = AppMode::SendProgress;
-                    }
-                }
-                AppMode::Fetch => {
-                    self.fetch_box(ui);
-                }
-                AppMode::SendProgress => {
-                    ui.label("Sending");
-                    ui.separator();
-                    if ui.button("Finish").clicked() { 
-                        // TODO Send cancel token to worker for send
-                        // clean and reset interfaces
-                    }
-                }
-                AppMode::FetchProgess => {
-                    ui.label("Fetching ...");
-                    
-                }
-                AppMode::Finished => {
-                    // self.reset();
-                }
-                AppMode::Config => {
-                    // config editor
-                    ui.label("Configuration");
-                    ui.checkbox(&mut self.config.dark_mode, "Darkmode");
-                    ui.separator();
-                    if ui.button("Save Config").clicked() {
-                        self.mode = AppMode::Idle;
-                    }
-                }
-            }
-            // Show the current messages
-            self.show_messages(ui);
             // Show the current progress bars
             self.show_progress(ui);
+
+            // Show the current messages
+            self.show_messages(ui);
+
             ui.separator();
+
+            // Modal Display
+            self.modal_display(ui);
         });
+    }
+
+    fn button_header(&mut self, send_enabled: bool, receive_enabled: bool, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.add_enabled_ui(receive_enabled, |ui| {
+                if ui.button("Fetch...").clicked() {
+                    self.mode = AppMode::Fetch;
+                }
+            });
+            ui.add_space(2.);
+            ui.add_enabled_ui(send_enabled, |ui| {
+                if ui.button("Send Folder…").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                        self.picked_path = Some(path);
+                    }
+                    self.mode = AppMode::Send;
+                };
+                if ui.button("Send File…").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_file() {
+                        self.picked_path = Some(path);
+                    }
+                    self.mode = AppMode::Send;
+                };
+            });
+            // ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {});
+        });
+    }
+    
+    fn modal_display(&mut self, ui: &mut Ui) {
+        // Show mode based widgets
+        match self.mode {
+            AppMode::Init => {}
+            AppMode::Idle => {
+                self.fetch_box(ui);
+            }
+            AppMode::Send => {
+                if let Some(path) = &self.picked_path {
+                    self.cmd(Command::Send(path.to_owned()));
+                    self.mode = AppMode::SendProgress;
+                }
+            }
+            AppMode::Fetch => {
+                self.fetch_box(ui);
+            }
+            AppMode::SendProgress => {
+                ui.label("Sending");
+                ui.separator();
+                if ui.button("Finish").clicked() {
+                    // TODO Send cancel token to worker for send
+                    // clean and reset interfaces
+                }
+            }
+            AppMode::FetchProgess => {
+                ui.label("Fetching ...");
+            }
+            AppMode::Finished => {
+                // self.reset();
+            }
+            AppMode::Config => {
+                // config editor
+                ui.label("Configuration");
+                ui.checkbox(&mut self.config.dark_mode, "Darkmode");
+                ui.separator();
+                if ui.button("Save Config").clicked() {
+                    self.mode = AppMode::Idle;
+                }
+            }
+        }
     }
 
     fn fetch_box(&mut self, ui: &mut Ui) {

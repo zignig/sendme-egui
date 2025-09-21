@@ -1,6 +1,7 @@
 use crate::comms::MessageOut;
 use anyhow::Result;
 use anyhow::anyhow;
+use chrono::Local;
 use humansize::{DECIMAL, format_size};
 use iroh_blobs::api::Store;
 use iroh_blobs::api::blobs::ExportMode;
@@ -92,6 +93,9 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
                     }
                 }
             }
+            // Set a tag for later work
+            let dt = Local::now().to_rfc3339().to_owned();
+            db.tags().set(format!("incoming-{}", dt), ticket.hash()).await?;
             (stats, total_files, payload_size)
         } else {
             mess.correct("Blob is complete and local!").await?;

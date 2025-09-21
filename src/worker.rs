@@ -10,6 +10,7 @@ use async_channel::{Receiver, Sender};
 use iroh_blobs::store::fs::FsStore;
 use tokio::time::{Instant, interval};
 use tracing::{info, warn};
+use n0_future::StreamExt;
 
 use crate::transport::{receive, send};
 
@@ -101,9 +102,16 @@ impl Worker {
                 self.mess
                     .info(format!("{}", self.store_path.display()).as_str())
                     .await?;
+                // 
+                // Show exisiting tags for later work
+                let mut tags = self.store.tags().list().await.unwrap();
+                while let Some(event) = tags.next().await {
+                    let event = event?;
+                    info!("{} {}", event.name, event.hash);
+                }
                 return Ok(());
             }
-            // This needs commands to finish 
+            // This needs commands to finish
             // TODO add a cancellation ticket in here.
             Command::Send(path) => {
                 self.start_timer().await?;
@@ -119,7 +127,7 @@ impl Worker {
                 }
                 return Ok(());
             }
-            // This is working. 
+            // This is working.
             // TODO needs a cancellation ticket too.
             Command::Fetch((ticket, target)) => {
                 let target_path = PathBuf::from(target);
@@ -140,9 +148,9 @@ impl Worker {
     }
 
     // -----
-    // Timer functions 
+    // Timer functions
     //------
-    
+
     async fn start_timer(&mut self) -> Result<()> {
         warn!("Start Timer");
         self.timer_out.send(TimerCommands::Start).await?;
