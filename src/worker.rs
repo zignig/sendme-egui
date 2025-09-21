@@ -7,6 +7,7 @@ use std::{path::PathBuf, time::Duration};
 use crate::comms::{Command, Event, MessageOut};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
+use iroh_blobs::store::fs::FsStore;
 use time::Time;
 use tokio::time::{Instant, interval};
 use tracing::{info, warn};
@@ -19,6 +20,8 @@ pub struct Worker {
     // TODO add worker state
     pub mess: MessageOut,
     pub timer_out: Sender<TimerCommands>,
+    pub store_path: PathBuf,
+    pub store: FsStore,
 }
 
 pub struct WorkerHandle {
@@ -27,7 +30,7 @@ pub struct WorkerHandle {
 }
 
 impl Worker {
-    pub fn spawn() -> WorkerHandle {
+    pub fn spawn(store_path: PathBuf) -> WorkerHandle {
         let (command_tx, command_rx) = async_channel::bounded(16);
         let (event_tx, event_rx) = async_channel::bounded(16);
         let handle = WorkerHandle {
@@ -40,7 +43,7 @@ impl Worker {
                 .build()
                 .expect("failed to start tokio runtime");
             rt.block_on(async move {
-                let mut worker = Worker::start(command_rx, event_tx)
+                let mut worker = Worker::start(command_rx, event_tx, store_path)
                     .await
                     .expect("Worker failed to start");
                 if let Err(err) = worker.run().await {
@@ -54,6 +57,7 @@ impl Worker {
     async fn start(
         command_rx: async_channel::Receiver<Command>,
         event_tx: async_channel::Sender<Event>,
+        store_path: PathBuf,
     ) -> Result<Self> {
         let mess = MessageOut::new(event_tx.clone());
         // Timer
@@ -61,27 +65,19 @@ impl Worker {
         let (timer_out, timer_in) = async_channel::bounded(16);
         let timer = TimerTask::new(m2);
         timer.run(timer_in);
-
+        let store = iroh_blobs::store::fs::FsStore::load(&store_path).await?;
         Ok(Self {
             command_rx,
             mess,
             timer_out: timer_out,
+            store_path,
+            store,
         })
     }
 
     async fn run(&mut self) -> Result<()> {
         // the actual runner for the worker
-        // TODO add elapsed timer ticker, send message to the gui.
-
-        // TODO
-        // I think this needs to be a join rather than a select
-        // get both going at the same time.
-
         info!("Starting  the worker");
-
-        // TODO strip this out into a separate function
-        // with it's own async channel.
-
         loop {
             tokio::select! {
                 command = self.command_rx.recv() => {
@@ -103,8 +99,9 @@ impl Worker {
             Command::Setup { callback } => {
                 let _ = self.mess.set_callback(callback).await?;
                 self.mess.correct("Ready...").await?;
-                // self.mess.info("info").await?;
-                // self.mess.error("error").await?;
+                self.mess
+                    .info(format!("{}", self.store_path.display()).as_str())
+                    .await?;
                 return Ok(());
             }
             // This needs commands to finish
@@ -115,7 +112,7 @@ impl Worker {
             Command::Fetch((ticket, target)) => {
                 let target_path = PathBuf::from(target);
                 self.start_timer().await?;
-                match receive(ticket, target_path, self.mess.clone()).await {
+                match receive(ticket, target_path, self.mess.clone(), self.store.clone()).await {
                     Ok(_) => {
                         self.reset_timer().await?;
                         self.mess.finished().await?;
@@ -143,6 +140,10 @@ impl Worker {
     }
 }
 
+// ----------
+// Timer runner
+// ----------
+
 #[derive(Debug)]
 pub enum TimerCommands {
     Start,
@@ -161,7 +162,7 @@ impl TimerTask {
     pub fn run(self, incoming: Receiver<TimerCommands>) {
         let _ = tokio::spawn(async move {
             let mut interval = interval(Duration::from_millis(1000));
-            let mut running = true;
+            let mut running = false;
             let mess = self.mess.clone();
             let mut start_time = Instant::now();
             loop {
@@ -171,13 +172,13 @@ impl TimerTask {
                        info!("{:?}",command);
                        match command {
                         TimerCommands::Start => { start_time = Instant::now(); running = true;},
-                        TimerCommands::Reset => { running = false ; mess.reset_timer().await; } ,
+                        TimerCommands::Reset => { running = false ; let _ = mess.reset_timer().await; } ,
                       };
                     }
                     _ = interval.tick() => {
                     if running {
                         let since = start_time.elapsed().as_secs();
-                        mess.tick(since).await;
+                        let _ = mess.tick(since).await;
                     }
                     }
                 }

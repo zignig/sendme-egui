@@ -7,8 +7,7 @@ use std::path::PathBuf;
 use crate::comms::{Command, Event, MessageDisplay, ProgressList};
 use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
-// use anyhow::anyhow;
-use directories::UserDirs;
+use directories::{BaseDirs, UserDirs};
 use eframe::NativeOptions;
 use eframe::egui::{self, Visuals};
 use egui::Ui;
@@ -21,6 +20,7 @@ use tracing::info;
 pub struct Config {
     dark_mode: bool,
     download_path: PathBuf,
+    store_path: PathBuf,
 }
 
 impl Default for Config {
@@ -29,9 +29,18 @@ impl Default for Config {
             Some(user_dirs) => user_dirs.download_dir().unwrap().to_owned().join("sendme"),
             None => std::process::exit(1),
         };
+        let store_path = match BaseDirs::new() {
+            Some(base_dirs) => base_dirs
+                .data_dir()
+                .to_owned()
+                .join("sendme-egui")
+                .join("blob_data"),
+            None => std::process::exit(1),
+        };
         Self {
             dark_mode: true,
             download_path,
+            store_path,
         }
     }
 }
@@ -68,7 +77,7 @@ impl Display for AppMode {
             AppMode::FetchProgess => "Fetch Running",
             AppMode::Finished => "Finished",
         };
-        write!(f,"{}",val)
+        write!(f, "{}", val)
     }
 }
 
@@ -105,11 +114,11 @@ impl eframe::App for App {
 // Spawns the worker as a subthread
 impl App {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
-        let handle = Worker::spawn();
         // Load the config
-        let config = confy::load("sendme-egui", None).unwrap_or_default();
-        let path = confy::get_configuration_file_path("sendme-egui", None);
-        info!("config path {:?}", path);
+        let config: Config = confy::load("sendme-egui", None).unwrap_or_default();
+
+        // Start up the worker , separate thread , async runner
+        let handle = Worker::spawn(config.store_path.clone());
 
         let state = AppState {
             picked_path: None,
@@ -198,7 +207,7 @@ impl AppState {
                     if let Some(elapsed_seconds) = self.elapsed {
                         ui.label(format_seconds_as_hms(elapsed_seconds));
                     }
-                    ui.label(format!(" {} ",self.mode));
+                    ui.label(format!(" {} ", self.mode));
                 });
             });
             ui.add_space(5.);
