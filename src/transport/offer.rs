@@ -1,5 +1,4 @@
 // Share a file onto the blob network
-// TODO
 // rip send out of the sendme
 // This is a cut and paste from sendme bits that have been updated
 // to use message and progress bars
@@ -12,9 +11,8 @@ use chrono::Local;
 use futures_buffered::BufferedStreamExt;
 use iroh::Endpoint;
 use iroh::RelayMode;
-use iroh::discovery::dns::DnsDiscovery;
 use iroh::Watcher;
-use iroh_blobs::ticket::BlobTicket;
+use iroh::discovery::dns::DnsDiscovery;
 use iroh_blobs::BlobFormat;
 use iroh_blobs::BlobsProtocol;
 use iroh_blobs::api::TempTag;
@@ -23,6 +21,7 @@ use iroh_blobs::api::blobs::AddProgressItem;
 use iroh_blobs::api::blobs::ImportMode;
 use iroh_blobs::format::collection::Collection;
 use iroh_blobs::store::fs::FsStore;
+use iroh_blobs::ticket::BlobTicket;
 use n0_future::StreamExt;
 use std::path::Component;
 use std::path::Path;
@@ -38,7 +37,10 @@ pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()>
     let (tag, size, collection) = import(path, &store, mess.clone()).await?;
     // Set a tag for later work
     let dt = Local::now().to_rfc3339().to_owned();
-    store.tags().set(format!("outgoing-{}", dt), tag.hash().to_owned()).await?;
+    store
+        .tags()
+        .set(format!("outgoing-{}", dt), tag.hash().to_owned())
+        .await?;
 
     mess.correct(format!("{:?}", tag).as_str()).await?;
     mess.correct(format!("{:?}", size).as_str()).await?;
@@ -60,8 +62,8 @@ pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()>
         .spawn();
 
     // Create the ticket
-    let mut addr = router.endpoint().node_addr().initialized().await;
-    let ticket =  BlobTicket::new(addr,tag.hash().to_owned(),BlobFormat::HashSeq);
+    let addr = router.endpoint().node_addr().initialized().await;
+    let ticket = BlobTicket::new(addr, tag.hash().to_owned(), BlobFormat::HashSeq);
     mess.send_ticket(ticket.to_string()).await?;
 
     Err(anyhow!("Send Fail"))

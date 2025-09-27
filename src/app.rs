@@ -60,7 +60,6 @@ enum AppMode {
     Idle,
     Send,
     SendProgress,
-    Fetch,
     FetchProgess,
     Finished,
     Config,
@@ -73,7 +72,6 @@ impl Display for AppMode {
             AppMode::Idle => "Idle",
             AppMode::Send => "Send",
             AppMode::SendProgress => "Send Running...",
-            AppMode::Fetch => "Fetch",
             AppMode::FetchProgess => "Fetch Running...",
             AppMode::Finished => "Finished",
             AppMode::Config => "Config",
@@ -174,14 +172,13 @@ impl AppState {
                 }
                 Event::StopTick => {
                     self.elapsed = None;
-                },
-                Event::SendTicket(ticket) => self.send_ticket =Some(ticket)
+                }
+                Event::SendTicket(ticket) => self.send_ticket = Some(ticket),
             }
         }
 
         // active flags
         let mut send_enabled: bool = true;
-        let mut receive_enabled: bool = true;
 
         // Use the mode to enable and disable
         match self.mode {
@@ -189,14 +186,8 @@ impl AppState {
                 self.mode = AppMode::Idle;
             }
             AppMode::Idle => {}
-            AppMode::Send => {
-                receive_enabled = false;
-            }
-            AppMode::Fetch => {
-                send_enabled = false;
-            }
+            AppMode::Send => {}
             AppMode::SendProgress | AppMode::FetchProgess => {
-                receive_enabled = false;
                 send_enabled = false;
             }
             AppMode::Finished => {
@@ -204,7 +195,6 @@ impl AppState {
             }
             AppMode::Config => {
                 send_enabled = false;
-                receive_enabled = false;
             }
         }
         // The actual gui
@@ -250,7 +240,7 @@ impl AppState {
         });
     }
 
-    fn button_header(&mut self, send_enabled: bool,ui: &mut Ui) {
+    fn button_header(&mut self, send_enabled: bool, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.add_space(2.);
             ui.add_enabled_ui(send_enabled, |ui| {
@@ -270,7 +260,7 @@ impl AppState {
             // ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {});
         });
     }
-    
+
     fn modal_display(&mut self, ui: &mut Ui) {
         // Show mode based widgets
         match self.mode {
@@ -284,20 +274,23 @@ impl AppState {
                     self.mode = AppMode::SendProgress;
                 }
             }
-            AppMode::Fetch => {
-                self.fetch_box(ui);
-            }
             AppMode::SendProgress => {
-                ui.label("Sending");
-                ui.separator();
+                if let Some(path) = &self.picked_path {
+                    ui.label(format!("{}",path.display()));
+                }
+                if let Some(ticket) = &self.send_ticket {
+                    ui.add_space(10.);
+                    ui.label("BLob Ticket...")
+                    ui.add_space(5.);
+                    // TODO show the  ticket
+                    ui.separator();
+                    ui.label(ticket);
+                    ui.separator();
+                }
+
                 if ui.button("Finish").clicked() {
                     // TODO Send cancel token to worker for send
                     // clean and reset interfaces
-                }
-                if let Some(ticket) = &self.send_ticket { 
-                    // TODO show the ticket
-                    ui.te
-                    ui.label(ticket);
                 }
             }
             AppMode::FetchProgess => {
@@ -324,6 +317,7 @@ impl AppState {
         let _ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
             .desired_width(f32::INFINITY)
             .show(ui);
+        ui.add_space(5.);
         ui.horizontal(|ui| {
             if ui.button("Fetch").clicked() {
                 self.cmd(Command::Fetch((
@@ -359,8 +353,6 @@ impl AppState {
     // Show the list of messages
     fn show_messages(&mut self, ui: &mut Ui) {
         ui.add_space(4.);
-        // let text_style = egui::TextStyle::Body;
-        // let row_height = ui.text_style_height(&text_style);
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
             .max_width(f32::INFINITY)
@@ -379,15 +371,9 @@ impl AppState {
                         });
                 });
             });
-        // egui::ScrollArea::vertical()
-        //     .stick_to_bottom(true)
-        //     .show(ui, |ui| {
-        //         for message in self.messages.iter() {
-        //             message.show(ui);
-        //         }
-        //     });
     }
 
+    // Send command to the worker.
     fn cmd(&self, command: Command) {
         self.worker
             .command_tx

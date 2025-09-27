@@ -11,8 +11,6 @@ use iroh::SecretKey;
 mod fetch;
 mod offer;
 
-//TODO remove
-// mod sendme;
 
 /// Get the secret key or generate a new one.
 ///

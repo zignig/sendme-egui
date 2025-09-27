@@ -8,16 +8,14 @@ use crate::comms::{Command, Event, MessageOut};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use iroh_blobs::store::fs::FsStore;
+use n0_future::StreamExt;
 use tokio::time::{Instant, interval};
 use tracing::{info, warn};
-use n0_future::StreamExt;
 
 use crate::transport::{receive, send};
 
 pub struct Worker {
     pub command_rx: Receiver<Command>,
-    // pub event_tx: Sender<Event>,
-    // TODO add worker state
     pub mess: MessageOut,
     pub timer_out: Sender<TimerCommands>,
     pub store_path: PathBuf,
@@ -94,15 +92,16 @@ impl Worker {
     // handle the incoming commands from the egui
     async fn handle_command(&mut self, command: Command) -> Result<()> {
         match command {
-            // TODO move the update callback here and get rid of
-            // the update message
             Command::Setup { callback } => {
+                // lodge the redraw callback into the message updater
                 let _ = self.mess.set_callback(callback).await?;
+                // Say ready
                 self.mess.correct("Ready...").await?;
+                // TODO remove
                 self.mess
                     .info(format!("{}", self.store_path.display()).as_str())
                     .await?;
-                // 
+                //
                 // Show exisiting tags for later work
                 let mut tags = self.store.tags().list().await.unwrap();
                 while let Some(event) = tags.next().await {
@@ -127,8 +126,7 @@ impl Worker {
                 }
                 return Ok(());
             }
-            // This is working.
-            // TODO needs a cancellation ticket too.
+            // This is working.end with a UI reset.
             Command::Fetch((ticket, target)) => {
                 let target_path = PathBuf::from(target);
                 self.start_timer().await?;
@@ -187,7 +185,7 @@ impl TimerTask {
 
     pub fn run(self, incoming: Receiver<TimerCommands>) {
         let _ = tokio::spawn(async move {
-            // every second
+            // every second , variables are local to the thread.
             let mut interval = interval(Duration::from_millis(1000));
             let mut running = true;
             let mess = self.mess.clone();
@@ -196,7 +194,7 @@ impl TimerTask {
                 tokio::select! {
                     command  = incoming.recv() => {
                        let command = command.unwrap() ;
-                       info!("{:?}",command);
+                       info!("timer -- {:?}",command);
                        match command {
                         TimerCommands::Start => { start_time = Instant::now(); running = true;},
                         TimerCommands::Reset => { running = false ; let _ = mess.reset_timer().await; } ,
