@@ -23,12 +23,14 @@ use iroh::{Endpoint, RelayMode, discovery::dns::DnsDiscovery};
 
 // fetch a blob from the iroh network
 pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsStore) -> Result<()> {
+    // TODO extract hash,node version of this , make ticket processing separate.
     if ticket == "".to_string() {
         return Err(anyhow!("Empty Blob"));
     }
+    // TODO check for "sendme recieve" leader on the ticket.
     let ticket = BlobTicket::from_str(ticket.as_str())?;
 
-    // TODO move these up into the worker.
+    // TODO move these up into the worker, move as an Option into the worker and pass and endpoint.
     let addr = ticket.node_addr().clone();
     let secret_key = super::get_or_create_secret()?;
     let mut builder = Endpoint::builder()
@@ -36,13 +38,11 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
         .secret_key(secret_key)
         .relay_mode(RelayMode::Default);
 
-    // if ticket.node_addr().relay_url.is_none() && ticket.node_addr().direct_addresses.is_empty() {
     builder = builder.add_discovery(DnsDiscovery::n0_dns());
-    // }
+
     let endpoint = builder.bind().await?;
     mess.info("Local endpoint created...").await?;
 
-    // let db2 = db.clone();
     warn!("Node built");
 
     // Now run the fetch
@@ -58,7 +58,6 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
             let (_hash_seq, sizes) =
                 get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
                     .await?;
-            // .map_err(show_get_error)?;
             let total_size = sizes.iter().copied().sum::<u64>();
             let payload_size = sizes.iter().skip(2).copied().sum::<u64>();
             let total_files = (sizes.len().saturating_sub(1)) as u64;
@@ -70,6 +69,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
                 total_files,
                 payload_size
             );
+
             // Fetch the file
             let get = db.remote().execute_get(connection, local.missing());
             let stats = Stats::default();
@@ -91,26 +91,33 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
                     }
                 }
             }
-            // Set a tag for later work
+
+            // Set a tag for later work, full replica
             let dt = Local::now().to_rfc3339().to_owned();
             db.tags().set(format!("incoming-{}", dt), ticket.hash()).await?;
             (stats, total_files, payload_size)
         } else {
+            // Have it already , just say yes.
             mess.correct("Blob is complete and local!").await?;
             let total_files = local.children().unwrap() - 1;
             let payload_bytes = 0;
             (Stats::default(), total_files, payload_bytes)
         };
+        // Save the collection.
         let collection = Collection::load(hash_and_format.hash, db.as_ref()).await?;
+        // Eport is instrinsic for now , split it out ongoing.
         export(&db, collection, target, mess.clone()).await?;
         (stats, total_files, payload_size)
     };
+
+    // Provide some stats
     mess.correct(format!("{:#?}", stats).as_str()).await?;
     mess.correct(format!("{}", total_files).as_str()).await?;
     mess.correct(format!("{}", payload_size).as_str()).await?;
     Ok(())
 }
 
+// Take the blob and make real files.
 pub async fn export(
     db: &Store,
     collection: Collection,
@@ -130,6 +137,7 @@ pub async fn export(
             anyhow::bail!("{} already exists", target.display());
         }
         mess.progress("Export", i + 1, len).await?;
+        // Get a stream of the files to download
         let mut stream = db
             .export_with_opts(ExportOptions {
                 hash: *hash,
@@ -138,6 +146,7 @@ pub async fn export(
             })
             .stream()
             .await;
+        // Write the files and make a progress bar.
         while let Some(item) = stream.next().await {
             match item {
                 ExportProgressItem::Size(_size) => {
@@ -160,6 +169,7 @@ pub async fn export(
     Ok(())
 }
 
+// Path cheking an manipulation ( extracted from sendme)
 fn get_export_path(root: &Path, name: &str) -> anyhow::Result<PathBuf> {
     let parts = name.split('/');
     let mut path = root.to_path_buf();
@@ -170,6 +180,7 @@ fn get_export_path(root: &Path, name: &str) -> anyhow::Result<PathBuf> {
     Ok(path)
 }
 
+// Make sure the path is good.
 fn validate_path_component(component: &str) -> anyhow::Result<()> {
     anyhow::ensure!(
         !component.contains('/'),

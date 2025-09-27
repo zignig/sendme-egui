@@ -35,6 +35,9 @@ impl Worker {
             command_tx,
             event_rx,
         };
+        // Spawn a new worker as a seperate thread.
+        //  egui is sync the worker is async , comms are a channel of commands and events
+        // events are wrapped in MessageOut for formatting and goodness
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
@@ -52,18 +55,22 @@ impl Worker {
         handle
     }
 
+    //
     async fn start(
         command_rx: async_channel::Receiver<Command>,
         event_tx: async_channel::Sender<Event>,
         store_path: PathBuf,
     ) -> Result<Self> {
         let mess = MessageOut::new(event_tx.clone());
-        // Timer
-        let m2 = mess.clone();
+        // Channel for the timer
         let (timer_out, timer_in) = async_channel::bounded(16);
-        let timer = TimerTask::new(m2);
+        // start the background timer ( 1 second interval if running )
+        let timer = TimerTask::new(mess.clone());
+        // Run the timer
         timer.run(timer_in);
+        // Create the blob store
         let store = iroh_blobs::store::fs::FsStore::load(&store_path).await?;
+        // Make the worker
         Ok(Self {
             command_rx,
             mess,
@@ -76,7 +83,9 @@ impl Worker {
     async fn run(&mut self) -> Result<()> {
         // the actual runner for the worker
         info!("Starting  the worker");
-        loop {
+        loop { 
+            // strictly does not need the select 
+            // as there is only one thing (for now)
             tokio::select! {
                 command = self.command_rx.recv() => {
                     let command = command?;
@@ -90,6 +99,7 @@ impl Worker {
     }
 
     // handle the incoming commands from the egui
+    // this is where the main actions for the worker happen
     async fn handle_command(&mut self, command: Command) -> Result<()> {
         match command {
             Command::Setup { callback } => {
@@ -136,6 +146,12 @@ impl Worker {
                         return Err(err);
                     }
                 };
+                return Ok(());
+            }
+
+            // Cancel testing
+            Command::CancelTest =>  { 
+                info!("Cancel!!");
                 return Ok(());
             }
         }

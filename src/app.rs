@@ -166,7 +166,6 @@ impl AppState {
                 }
                 Event::ProgressFinished(name) => self.progress.complete(name),
                 Event::ProgressComplete(name) => self.progress.finish(name),
-                Event::ProgressClear => self.progress.clear(),
                 Event::Tick(seconds) => {
                     self.elapsed = Some(seconds);
                 }
@@ -211,7 +210,11 @@ impl AppState {
                 if ui.button("Config").clicked() {
                     self.mode = AppMode::Config;
                 }
+                if ui.button("Cancel").clicked() {
+                    self.cmd(Command::CancelTest);
+                }
                 ui.add_space(6.);
+                // mode and timer
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if let Some(elapsed_seconds) = self.elapsed {
                         ui.label(format_seconds_as_hms(elapsed_seconds));
@@ -282,7 +285,6 @@ impl AppState {
                     ui.add_space(10.);
                     ui.label("Blob Ticket...");
                     ui.add_space(5.);
-                    // TODO show the  ticket
                     ui.separator();
                     ui.label(RichText::new(ticket).font(FontId::monospace(15.)));
                     ui.separator();

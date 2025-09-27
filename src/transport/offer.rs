@@ -42,10 +42,8 @@ pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()>
         .set(format!("outgoing-{}", dt), tag.hash().to_owned())
         .await?;
 
-    mess.correct(format!("{:?}", tag).as_str()).await?;
-    mess.correct(format!("{:?}", size).as_str()).await?;
-
     // Create the endpoint.
+    // TODO move this up into the worker as an Option , create on demand
     let secret_key = super::get_or_create_secret()?;
     let builder = Endpoint::builder()
         .alpns(vec![iroh_blobs::protocol::ALPN.to_vec()])
@@ -66,6 +64,8 @@ pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()>
     let ticket = BlobTicket::new(addr, tag.hash().to_owned(), BlobFormat::HashSeq);
     mess.send_ticket(ticket.to_string()).await?;
 
+    // TODO , wait and serve , wait for the cancel.
+    tokio::signal::ctrl_c().await?;
     Err(anyhow!("Send Fail"))
 }
 

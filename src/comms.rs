@@ -30,6 +30,7 @@ pub enum Command {
     Setup { callback: UpdateCallback },
     Send(PathBuf),
     Fetch((String, PathBuf)),
+    CancelTest
 }
 
 // Message types
