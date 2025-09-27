@@ -2,14 +2,17 @@
 // Worker
 // --------------------------
 
-use std::{path::PathBuf, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use crate::comms::{Command, Event, MessageOut};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use iroh_blobs::store::fs::FsStore;
 use n0_future::StreamExt;
-use tokio::time::{Instant, interval};
+use tokio::{
+    sync::Notify,
+    time::{Instant, interval},
+};
 use tracing::{info, warn};
 
 use crate::transport::{receive, send};
@@ -20,6 +23,7 @@ pub struct Worker {
     pub timer_out: Sender<TimerCommands>,
     pub store_path: PathBuf,
     pub store: FsStore,
+    pub send_notify: Arc<Notify>,
 }
 
 pub struct WorkerHandle {
@@ -77,14 +81,15 @@ impl Worker {
             timer_out: timer_out,
             store_path,
             store,
+            send_notify: Arc::new(Notify::new()),
         })
     }
 
     async fn run(&mut self) -> Result<()> {
         // the actual runner for the worker
         info!("Starting  the worker");
-        loop { 
-            // strictly does not need the select 
+        loop {
+            // strictly does not need the select
             // as there is only one thing (for now)
             tokio::select! {
                 command = self.command_rx.recv() => {
@@ -119,16 +124,16 @@ impl Worker {
             // TODO add a cancellation ticket in here.
             Command::Send(path) => {
                 self.start_timer().await?;
-                match send(path, self.mess.clone(), self.store.clone()).await {
-                    Ok(_) => {
-                        self.reset_timer().await?;
-                        self.mess.finished().await?
-                    }
-                    Err(err) => {
-                        self.reset_timer().await?;
-                        return Err(err);
-                    }
-                }
+                let store = self.store.clone();
+                let mess = self.mess.clone();
+                let notify = self.send_notify.clone();
+                // run in the background
+                let _ = tokio::spawn(async move {
+                    let _ = mess.info("Start Send").await;
+                    let _ = send(path, mess.clone(), store, notify).await;
+                    let _ = mess.info("End Send").await;
+                    let _ = mess.info("Notify exit").await;
+                });
                 return Ok(());
             }
 
@@ -149,9 +154,10 @@ impl Worker {
                 return Ok(());
             }
 
-            // Cancel testing
-            Command::CancelTest =>  { 
-                info!("Cancel!!");
+            // Cancel the send if it is running
+            Command::CancelSend => {
+                info!("Finish the send runner!!");
+                self.send_notify.notify_one();
                 return Ok(());
             }
         }

@@ -210,9 +210,6 @@ impl AppState {
                 if ui.button("Config").clicked() {
                     self.mode = AppMode::Config;
                 }
-                if ui.button("Cancel").clicked() {
-                    self.cmd(Command::CancelTest);
-                }
                 ui.add_space(6.);
                 // mode and timer
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -291,6 +288,10 @@ impl AppState {
                 }
 
                 if ui.button("Finish").clicked() {
+                    // This activates a notify within the send system
+                    // to finish the send 
+                    self.cmd(Command::CancelSend);
+                    self.mode = AppMode::Idle;
                     // TODO Send cancel token to worker for send
                     // clean and reset interfaces
                 }

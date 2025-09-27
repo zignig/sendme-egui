@@ -23,18 +23,18 @@ use iroh_blobs::format::collection::Collection;
 use iroh_blobs::store::fs::FsStore;
 use iroh_blobs::ticket::BlobTicket;
 use n0_future::StreamExt;
+use tokio::sync::Notify;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
-// use tracing::info;
+use std::sync::Arc;
 use walkdir::WalkDir;
 
-// Not a mock anymore , breakdown.
 // TODO , cancellation feed to stop.
 
-pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()> {
+pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore, notifty: Arc<Notify>) -> Result<()> {
     // Import the files into the blob store
-    let (tag, size, _collection) = import(path, &store, mess.clone()).await?;
+    let (tag, _size, _collection) = import(path, &store, mess.clone()).await?;
     // Set a tag for later work
     let dt = Local::now().to_rfc3339().to_owned();
     store
@@ -64,9 +64,10 @@ pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()>
     let ticket = BlobTicket::new(addr, tag.hash().to_owned(), BlobFormat::HashSeq);
     mess.send_ticket(ticket.to_string()).await?;
 
-    // TODO , wait and serve , wait for the cancel.
-    tokio::signal::ctrl_c().await?;
-    Err(anyhow!("Send Fail"))
+    // Wait for the end signal to arrive from the egui
+    notifty.notified().await;
+    Ok(())
+    // Err(anyhow!("Send Fail"))
 }
 
 /// Import from a file or directory into the database.
