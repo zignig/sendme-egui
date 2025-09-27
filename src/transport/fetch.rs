@@ -77,12 +77,10 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
             while let Some(item) = stream.next().await {
                 match item {
                     GetProgressItem::Progress(offset) => {
-                        // info!("{:#?}", offset);
                         mess.progress("Download", offset as usize, payload_size as usize)
                             .await?;
                     }
                     GetProgressItem::Done(value) => {
-                        // info!("Done {:#?}", value);
                         mess.correct("Done").await?;
                         mess.complete("Download").await?;
                         mess.info(format!("bytes read {}", value.payload_bytes_read).as_str())
@@ -179,38 +177,3 @@ fn validate_path_component(component: &str) -> anyhow::Result<()> {
     );
     Ok(())
 }
-
-// const MAX: usize = 100;
-// let mut ticker = time::interval(Duration::from_millis(20));
-// let mut counter = 0;
-// info!("{}", ticket);
-// loop {
-//     counter += 1;
-//     ticker.tick().await;
-//     mess.progress("Downloading", counter, MAX).await?;
-//     if counter == MAX {
-//         // mess.finished().await?;
-//         return Ok(());
-//     }
-// }
-
-// fn show_get_error(e: GetError) -> GetError {
-//     match &e {
-//         GetError::NotFound { .. } => {
-//             eprintln!("{}", style("send side no longer has a file").yellow())
-//         }
-//         GetError::RemoteReset { .. } => eprintln!("{}", style("remote reset").yellow()),
-//         GetError::NoncompliantNode { .. } => {
-//             eprintln!("{}", style("non-compliant remote").yellow())
-//         }
-//         GetError::Io { source, .. } => eprintln!(
-//             "{}",
-//             style(format!("generic network error: {source}")).yellow()
-//         ),
-//         GetError::BadRequest { .. } => eprintln!("{}", style("bad request").yellow()),
-//         GetError::LocalFailure { source, .. } => {
-//             eprintln!("{} {source:?}", style("local failure").yellow())
-//         }
-//     }
-//     e
-// }

@@ -19,6 +19,7 @@ pub enum Event {
     Progress((String, usize, usize)),
     ProgressFinished(String),
     ProgressComplete(String),
+    SendTicket(String),
     ProgressClear,
     Tick(u64),
     StopTick,
@@ -139,6 +140,11 @@ impl MessageOut {
 
     pub async fn reset_timer(&self) -> Result<()> {
         self.emit(Event::StopTick).await?;
+        Ok(())
+    }
+
+    pub async fn send_ticket(&self, ticket: String) -> Result<()> { 
+        self.emit(Event::SendTicket(ticket)).await?;
         Ok(())
     }
 }

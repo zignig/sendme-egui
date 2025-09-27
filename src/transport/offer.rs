@@ -13,6 +13,8 @@ use futures_buffered::BufferedStreamExt;
 use iroh::Endpoint;
 use iroh::RelayMode;
 use iroh::discovery::dns::DnsDiscovery;
+use iroh::Watcher;
+use iroh_blobs::ticket::BlobTicket;
 use iroh_blobs::BlobFormat;
 use iroh_blobs::BlobsProtocol;
 use iroh_blobs::api::TempTag;
@@ -58,6 +60,9 @@ pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()>
         .spawn();
 
     // Create the ticket
+    let mut addr = router.endpoint().node_addr().initialized().await;
+    let ticket =  BlobTicket::new(addr,tag.hash().to_owned(),BlobFormat::HashSeq);
+    mess.send_ticket(ticket.to_string()).await?;
 
     Err(anyhow!("Send Fail"))
 }

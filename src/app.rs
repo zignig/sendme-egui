@@ -88,6 +88,7 @@ struct AppState {
     worker: WorkerHandle,
     mode: AppMode,
     receiver_ticket: String,
+    send_ticket: Option<String>,
     progress: ProgressList,
     messages: Vec<MessageDisplay>,
     config: Config,
@@ -128,6 +129,7 @@ impl App {
             worker: handle,
             mode: AppMode::Init,
             receiver_ticket: String::new(),
+            send_ticket: None,
             progress: ProgressList::new(),
             messages: Vec::new(),
             config: config,
@@ -172,7 +174,8 @@ impl AppState {
                 }
                 Event::StopTick => {
                     self.elapsed = None;
-                }
+                },
+                Event::SendTicket(ticket) => self.send_ticket =Some(ticket)
             }
         }
 
@@ -207,6 +210,8 @@ impl AppState {
         // The actual gui
 
         // Status bar at the bottom
+        // egui needs outer things done first
+        // the status bar at the bottom.
         egui::TopBottomPanel::bottom("status bar").show(ctx, |ui| {
             ui.add_space(5.);
             ui.horizontal(|ui| {
@@ -233,29 +238,20 @@ impl AppState {
             ui.vertical_centered(|ui| ui.heading("Sendme"));
             ui.separator();
             ui.add_space(5.);
-            self.button_header(send_enabled, receive_enabled, ui);
+            self.button_header(send_enabled, ui);
 
             ui.separator();
-            // Show the current progress bars
-            self.show_progress(ui);
-
-            // Show the current messages
-            self.show_messages(ui);
-
-            ui.separator();
-
             // Modal Display
             self.modal_display(ui);
+            // Show the current progress bars
+            self.show_progress(ui);
+            // Show the current messages
+            self.show_messages(ui);
         });
     }
 
-    fn button_header(&mut self, send_enabled: bool, receive_enabled: bool, ui: &mut Ui) {
+    fn button_header(&mut self, send_enabled: bool,ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.add_enabled_ui(receive_enabled, |ui| {
-                if ui.button("Fetch...").clicked() {
-                    self.mode = AppMode::Fetch;
-                }
-            });
             ui.add_space(2.);
             ui.add_enabled_ui(send_enabled, |ui| {
                 if ui.button("Send Folder…").clicked() {
@@ -298,6 +294,11 @@ impl AppState {
                     // TODO Send cancel token to worker for send
                     // clean and reset interfaces
                 }
+                if let Some(ticket) = &self.send_ticket { 
+                    // TODO show the ticket
+                    ui.te
+                    ui.label(ticket);
+                }
             }
             AppMode::FetchProgess => {
                 ui.label("Fetching ...");
@@ -318,7 +319,7 @@ impl AppState {
     }
 
     fn fetch_box(&mut self, ui: &mut Ui) {
-        ui.label("Blob ticket...");
+        ui.label("Fetch blob with ticket...");
         ui.add_space(8.);
         let _ticket_edit = egui::TextEdit::multiline(&mut self.receiver_ticket)
             .desired_width(f32::INFINITY)
