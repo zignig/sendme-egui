@@ -97,12 +97,7 @@ impl Worker {
                 let _ = self.mess.set_callback(callback).await?;
                 // Say ready
                 self.mess.correct("Ready...").await?;
-                // TODO remove
-                self.mess
-                    .info(format!("{}", self.store_path.display()).as_str())
-                    .await?;
-                //
-                // Show exisiting tags for later work
+                // Show exisiting tags for later work ( replication worker , not yet)
                 let mut tags = self.store.tags().list().await.unwrap();
                 while let Some(event) = tags.next().await {
                     let event = event?;
@@ -126,6 +121,7 @@ impl Worker {
                 }
                 return Ok(());
             }
+
             // This is working.end with a UI reset.
             Command::Fetch((ticket, target)) => {
                 let target_path = PathBuf::from(target);
@@ -171,13 +167,12 @@ pub enum TimerCommands {
     Start,
     Reset,
 }
-
 pub struct TimerTask {
     mess: MessageOut,
 }
 
 // Runs as a seperate tokio task, boops every second
-// Only sends time if its running
+// Only sends a message time if its running
 impl TimerTask {
     pub fn new(mess: MessageOut) -> Self {
         Self { mess }

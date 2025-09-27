@@ -34,7 +34,7 @@ use walkdir::WalkDir;
 
 pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore) -> Result<()> {
     // Import the files into the blob store
-    let (tag, size, collection) = import(path, &store, mess.clone()).await?;
+    let (tag, size, _collection) = import(path, &store, mess.clone()).await?;
     // Set a tag for later work
     let dt = Local::now().to_rfc3339().to_owned();
     store

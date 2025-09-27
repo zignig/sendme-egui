@@ -20,7 +20,6 @@ pub enum Event {
     ProgressFinished(String),
     ProgressComplete(String),
     SendTicket(String),
-    ProgressClear,
     Tick(u64),
     StopTick,
     Finished,
@@ -173,8 +172,10 @@ impl MessageDisplay {
     }
 }
 
+
+// --------
 // Progress Bars
-//
+// --------
 
 struct ProgressBar {
     name: String,

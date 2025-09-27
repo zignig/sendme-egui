@@ -9,7 +9,7 @@ use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
 use directories::{BaseDirs, UserDirs};
 use eframe::NativeOptions;
-use eframe::egui::{self, Visuals};
+use eframe::egui::{self, FontId, RichText, Visuals};
 use egui::Ui;
 use rfd;
 use serde_derive::{Deserialize, Serialize};
@@ -276,15 +276,15 @@ impl AppState {
             }
             AppMode::SendProgress => {
                 if let Some(path) = &self.picked_path {
-                    ui.label(format!("{}",path.display()));
+                    ui.label(format!("{}", path.display()));
                 }
                 if let Some(ticket) = &self.send_ticket {
                     ui.add_space(10.);
-                    ui.label("BLob Ticket...")
+                    ui.label("Blob Ticket...");
                     ui.add_space(5.);
                     // TODO show the  ticket
                     ui.separator();
-                    ui.label(ticket);
+                    ui.label(RichText::new(ticket).font(FontId::monospace(15.)));
                     ui.separator();
                 }
 
