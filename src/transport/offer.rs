@@ -73,7 +73,7 @@ pub async fn send(
 
     // Attach the services
     let blobs = BlobsProtocol::new(&store, endpoint.clone(), Some(progress_tx));
-    let router = iroh::protocol::Router::builder(endpoint)
+    let router = iroh::protocol::Router::builder(endpoint.clone())
         .accept(iroh_blobs::ALPN, blobs.clone())
         .spawn();
 
@@ -85,7 +85,9 @@ pub async fn send(
     // Wait for the end signal to arrive from the egui
 
     notifty.notified().await;
-    progress.await.ok();
+    // Finish the progress runner.
+    progress.abort();
+    mess.info("progress shutdown finished...").await?;
     Ok(())
     // Err(anyhow!("Send Fail"))
 }
@@ -153,19 +155,23 @@ async fn import(
                         AddProgressItem::CopyProgress(offset) => {
                             m.progress(name.as_str(), offset as usize, item_size as usize)
                                 .await?;
+                            // info!("inboard progress");
                         }
                         AddProgressItem::CopyDone => {
                             m.complete(name.as_str()).await?;
+                            // info!("copy done");
                         }
                         AddProgressItem::OutboardProgress(offset) => {
                             m.progress(name.as_str(), offset as usize, item_size as usize)
                                 .await?;
+                            // info!("outboard progress");
                         }
                         AddProgressItem::Error(cause) => {
                             anyhow::bail!("error importing {}: {}", name, cause);
                         }
                         AddProgressItem::Done(tt) => {
                             m.progress_finish(name.as_str()).await?;
+                            // info!("item done");
                             break tt;
                         }
                     }
@@ -256,7 +262,7 @@ async fn show_provide_progress(
             } => {
                 permitted.send(true).await.ok();
                 info!("connection {}", &connection_id);
-                connections.insert(connection_id,(0,0));
+                connections.insert(connection_id, (0, 0));
             }
             Event::ConnectionClosed { connection_id } => {
                 info!("closed {}", connection_id);
@@ -306,6 +312,6 @@ async fn show_provide_progress(
             _ => {}
         }
     }
-    println!("{:#?}",connections);
+    println!("{:#?}", connections);
     Ok(())
 }

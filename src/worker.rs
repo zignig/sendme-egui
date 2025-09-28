@@ -130,10 +130,11 @@ impl Worker {
                 // run in the background
                 self.mess.correct("Start Send").await?;
                 let _ = tokio::spawn(async move {
-                    let _ = send(path, mess.clone(), store, notify).await;
+                    let out = send(path, mess.clone(), store, notify).await;
+                    println!("{:#?}", out);
                 });
                 self.mess.info("End Send").await?;
-                self.reset_timer().await?;
+
                 return Ok(());
             }
 
@@ -157,7 +158,8 @@ impl Worker {
             // Cancel the send if it is running
             Command::CancelSend => {
                 info!("Finish the send runner!!");
-                self.send_notify.notify_one();
+                self.send_notify.notify_waiters();
+                self.reset_timer().await?;
                 return Ok(());
             }
         }
@@ -168,13 +170,13 @@ impl Worker {
     //------
 
     async fn start_timer(&mut self) -> Result<()> {
-        warn!("Start Timer");
+        info!("Start Timer");
         self.timer_out.send(TimerCommands::Start).await?;
         Ok(())
     }
 
     async fn reset_timer(&mut self) -> Result<()> {
-        warn!("Stop timer");
+        info!("Stop timer");
         self.timer_out.send(TimerCommands::Reset).await?;
         Ok(())
     }

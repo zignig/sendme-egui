@@ -345,6 +345,7 @@ impl AppState {
         self.receiver_ticket = "".to_string();
         self.messages = Vec::new();
         self.progress.clear();
+        self.send_ticket = None;
     }
 
     // Show the list of progress bars
