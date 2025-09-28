@@ -97,6 +97,7 @@ impl Worker {
                     if let Err(err ) = self.handle_command(command).await{
                         self.mess.error(format!("{}",err).as_str()).await?;
                         warn!("command failed {err}");
+                        self.mess.finished().await?;
                     }
                 }
             }
@@ -130,8 +131,9 @@ impl Worker {
                 // run in the background
                 self.mess.correct("Start Send").await?;
                 let _ = tokio::spawn(async move {
-                    let out = send(path, mess.clone(), store, notify).await;
-                    println!("{:#?}", out);
+                    if let Err(out) = send(path, mess.clone(), store, notify).await {
+                        println!("{:#?}", out);
+                    }
                 });
                 self.mess.info("End Send").await?;
 

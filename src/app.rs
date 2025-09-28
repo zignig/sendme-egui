@@ -161,8 +161,6 @@ impl AppState {
                 }
                 Event::Finished => {
                     self.mode = AppMode::Finished;
-                    // Reset state
-                    // self.reset();
                 }
                 Event::ProgressFinished(name) => self.progress.complete(name),
                 Event::ProgressComplete(name) => self.progress.finish(name),
