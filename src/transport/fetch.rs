@@ -111,9 +111,9 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
     };
 
     // Provide some stats
-    mess.correct(format!("{:#?}", stats).as_str()).await?;
-    mess.correct(format!("{}", total_files).as_str()).await?;
-    mess.correct(format!("{}", payload_size).as_str()).await?;
+    // mess.correct(format!("{:#?}", stats).as_str()).await?;
+    // mess.correct(format!("{}", total_files).as_str()).await?;
+    // mess.correct(format!("{}", payload_size).as_str()).await?;
     Ok(())
 }
 

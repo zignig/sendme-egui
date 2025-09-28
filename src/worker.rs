@@ -21,7 +21,7 @@ pub struct Worker {
     pub command_rx: Receiver<Command>,
     pub mess: MessageOut,
     pub timer_out: Sender<TimerCommands>,
-    pub store_path: PathBuf,
+    // pub store_path: PathBuf,
     pub store: FsStore,
     pub send_notify: Arc<Notify>,
 }
@@ -79,7 +79,7 @@ impl Worker {
             command_rx,
             mess,
             timer_out: timer_out,
-            store_path,
+            // store_path,
             store,
             send_notify: Arc::new(Notify::new()),
         })
@@ -121,19 +121,19 @@ impl Worker {
                 return Ok(());
             }
             // This needs commands to finish
-            // TODO add a cancellation ticket in here.
             Command::Send(path) => {
                 self.start_timer().await?;
                 let store = self.store.clone();
                 let mess = self.mess.clone();
+                // This notify will make the send exit
                 let notify = self.send_notify.clone();
                 // run in the background
+                self.mess.correct("Start Send").await?;
                 let _ = tokio::spawn(async move {
-                    let _ = mess.info("Start Send").await;
                     let _ = send(path, mess.clone(), store, notify).await;
-                    let _ = mess.info("End Send").await;
-                    let _ = mess.info("Notify exit").await;
                 });
+                self.mess.info("End Send").await?;
+                self.reset_timer().await?;
                 return Ok(());
             }
 

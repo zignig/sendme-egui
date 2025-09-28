@@ -6,7 +6,6 @@
 use crate::comms::MessageOut;
 use anyhow::Context;
 use anyhow::Result;
-use anyhow::anyhow;
 use chrono::Local;
 use futures_buffered::BufferedStreamExt;
 use iroh::Endpoint;
@@ -20,19 +19,31 @@ use iroh_blobs::api::blobs::AddPathOptions;
 use iroh_blobs::api::blobs::AddProgressItem;
 use iroh_blobs::api::blobs::ImportMode;
 use iroh_blobs::format::collection::Collection;
+use iroh_blobs::provider;
+use iroh_blobs::provider::Event;
 use iroh_blobs::store::fs::FsStore;
 use iroh_blobs::ticket::BlobTicket;
 use n0_future::StreamExt;
-use tokio::sync::Notify;
+use n0_future::task::AbortOnDropHandle;
+use std::collections::BTreeMap;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::Notify;
+use tokio::sync::mpsc;
+use tracing::info;
+use tracing::trace;
 use walkdir::WalkDir;
 
-// TODO , cancellation feed to stop.
+// TODO , show the progress bars for the clients
 
-pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore, notifty: Arc<Notify>) -> Result<()> {
+pub async fn send(
+    path: PathBuf,
+    mess: MessageOut,
+    store: FsStore,
+    notifty: Arc<Notify>,
+) -> Result<()> {
     // Import the files into the blob store
     let (tag, _size, _collection) = import(path, &store, mess.clone()).await?;
     // Set a tag for later work
@@ -53,8 +64,15 @@ pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore, notifty: Arc<
     let endpoint = builder.bind().await?;
     mess.info("Local endpoint created...").await?;
 
+    // Start the client progress bar runner
+    let (progress_tx, progress_rx) = mpsc::channel(32);
+    let progress = AbortOnDropHandle::new(n0_future::task::spawn(show_provide_progress(
+        mess.clone(),
+        progress_rx,
+    )));
+
     // Attach the services
-    let blobs = BlobsProtocol::new(&store, endpoint.clone(), None);
+    let blobs = BlobsProtocol::new(&store, endpoint.clone(), Some(progress_tx));
     let router = iroh::protocol::Router::builder(endpoint)
         .accept(iroh_blobs::ALPN, blobs.clone())
         .spawn();
@@ -65,7 +83,9 @@ pub async fn send(path: PathBuf, mess: MessageOut, store: FsStore, notifty: Arc<
     mess.send_ticket(ticket.to_string()).await?;
 
     // Wait for the end signal to arrive from the egui
+
     notifty.notified().await;
+    progress.await.ok();
     Ok(())
     // Err(anyhow!("Send Fail"))
 }
@@ -219,4 +239,73 @@ pub fn canonicalized_path_to_string(
     let parts = parts.join("/");
     path_str.push_str(&parts);
     Ok(path_str)
+}
+
+async fn show_provide_progress(
+    mess: MessageOut,
+    mut recv: mpsc::Receiver<provider::Event>,
+) -> anyhow::Result<()> {
+    let mut connections = BTreeMap::new();
+    while let Some(item) = recv.recv().await {
+        trace!("got event {item:?}");
+        match item {
+            Event::ClientConnected {
+                connection_id,
+                node_id,
+                permitted,
+            } => {
+                permitted.send(true).await.ok();
+                info!("connection {}", &connection_id);
+                connections.insert(connection_id,(0,0));
+            }
+            Event::ConnectionClosed { connection_id } => {
+                info!("closed {}", connection_id);
+                connections.remove(&connection_id);
+            }
+            Event::GetRequestReceived {
+                connection_id,
+                request_id,
+                hash,
+                ..
+            } => {
+                info!("get request {} {} ", connection_id, request_id);
+            }
+            Event::TransferStarted {
+                connection_id,
+                request_id,
+                hash,
+                size,
+                index,
+            } => {
+                info!(
+                    "transfer started {}  {} {} {} ",
+                    connection_id, request_id, size, index
+                );
+            }
+            Event::TransferProgress {
+                connection_id,
+                index,
+                end_offset,
+                ..
+            } => {
+                // info!("progress {} {} {} ", connection_id,index, end_offset);
+            }
+            Event::TransferCompleted {
+                connection_id,
+                request_id,
+                stats,
+                ..
+            } => {
+                info!("completed {} {} ", connection_id, request_id);
+            }
+            Event::TransferAborted {
+                connection_id,
+                request_id,
+                ..
+            } => {}
+            _ => {}
+        }
+    }
+    println!("{:#?}",connections);
+    Ok(())
 }
