@@ -162,8 +162,8 @@ impl AppState {
                 Event::Finished => {
                     self.mode = AppMode::Finished;
                 }
-                Event::ProgressFinished(name) => self.progress.complete(name),
-                Event::ProgressComplete(name) => self.progress.finish(name),
+                Event::ProgressFinished(name) => self.progress.finish(name),
+                Event::ProgressComplete(name) => self.progress.complete(name),
                 Event::Tick(seconds) => {
                     self.elapsed = Some(seconds);
                 }
@@ -245,17 +245,16 @@ impl AppState {
                 if ui.button("Send Folder…").clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_folder() {
                         self.picked_path = Some(path);
+                        self.mode = AppMode::Send;
                     }
-                    self.mode = AppMode::Send;
                 };
                 if ui.button("Send File…").clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_file() {
                         self.picked_path = Some(path);
+                        self.mode = AppMode::Send;
                     }
-                    self.mode = AppMode::Send;
                 };
             });
-            // ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {});
         });
     }
 
@@ -287,11 +286,10 @@ impl AppState {
 
                 if ui.button("Finish").clicked() {
                     // This activates a notify within the send system
-                    // to finish the send 
+                    // to finish the send
                     self.cmd(Command::CancelSend);
                     self.mode = AppMode::Idle;
-                    // TODO Send cancel token to worker for send
-                    // clean and reset interfaces
+                    // TODO clean and reset interfaces
                 }
             }
             AppMode::FetchProgess => {

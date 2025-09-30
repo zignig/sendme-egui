@@ -123,13 +123,15 @@ impl MessageOut {
         Ok(())
     }
 
-    pub async fn complete(&self, name: &str) -> Result<()> {
-        self.emit(Event::ProgressFinished(name.to_string())).await?;
+    // Show the progress bar in green when complete
+    pub async fn progress_complete(&self, name: &str) -> Result<()> {
+        self.emit(Event::ProgressComplete(name.to_string())).await?;
         Ok(())
     }
 
+    // Finish and delete the progress bar
     pub async fn progress_finish(&self, name: &str) -> Result<()> {
-        self.emit(Event::ProgressComplete(name.to_string())).await?;
+        self.emit(Event::ProgressFinished(name.to_string())).await?;
         Ok(())
     }
 

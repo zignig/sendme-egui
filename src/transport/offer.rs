@@ -155,23 +155,19 @@ async fn import(
                         AddProgressItem::CopyProgress(offset) => {
                             m.progress(name.as_str(), offset as usize, item_size as usize)
                                 .await?;
-                            // info!("inboard progress");
                         }
                         AddProgressItem::CopyDone => {
-                            m.complete(name.as_str()).await?;
-                            // info!("copy done");
+                            m.progress_complete(name.as_str()).await?;
                         }
                         AddProgressItem::OutboardProgress(offset) => {
                             m.progress(name.as_str(), offset as usize, item_size as usize)
                                 .await?;
-                            // info!("outboard progress");
                         }
                         AddProgressItem::Error(cause) => {
                             anyhow::bail!("error importing {}: {}", name, cause);
                         }
                         AddProgressItem::Done(tt) => {
                             m.progress_finish(name.as_str()).await?;
-                            // info!("item done");
                             break tt;
                         }
                     }

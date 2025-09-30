@@ -82,9 +82,15 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
                     }
                     GetProgressItem::Done(value) => {
                         mess.correct("Done").await?;
-                        mess.complete("Download").await?;
-                        mess.info(format!("bytes read {}", value.payload_bytes_read).as_str())
-                            .await?;
+                        mess.progress_complete("Download").await?;
+                        mess.info(
+                            format!(
+                                "bytes read {}",
+                                format_size(value.payload_bytes_read, DECIMAL)
+                            )
+                            .as_str(),
+                        )
+                        .await?;
                     }
                     GetProgressItem::Error(_value) => {
                         anyhow::bail!(anyhow!("stream"));
@@ -94,7 +100,9 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
 
             // Set a tag for later work, full replica
             let dt = Local::now().to_rfc3339().to_owned();
-            db.tags().set(format!("incoming-{}", dt), ticket.hash()).await?;
+            db.tags()
+                .set(format!("incoming-{}", dt), ticket.hash())
+                .await?;
             (stats, total_files, payload_size)
         } else {
             // Have it already , just say yes.
@@ -128,7 +136,7 @@ pub async fn export(
     for (i, (name, hash)) in collection.iter().enumerate() {
         // info!("file name {}", name);
         let target = get_export_path(&target_dir, name)?;
-        info!("target {:#?}", target.display());
+        // info!("target {:#?}", target.display());
         if target.exists() {
             info!(
                 "target {} already exists. Export stopped.",
@@ -147,25 +155,26 @@ pub async fn export(
             .stream()
             .await;
         // Write the files and make a progress bar.
+        let mut psize: usize = 0;
         while let Some(item) = stream.next().await {
             match item {
-                ExportProgressItem::Size(_size) => {
-                    // pb.set_length(size);
+                ExportProgressItem::Size(size) => {
+                    psize = size as usize;
                 }
-                ExportProgressItem::CopyProgress(_offset) => {
-                    // pb.set_position(offset);
+                ExportProgressItem::CopyProgress(offset) => {
+                    mess.progress(name.as_str(), offset as usize, psize as usize)
+                        .await?;
                 }
                 ExportProgressItem::Done => {
-                    // pb.finish_and_clear();
+                    mess.progress_finish(name.as_str()).await?;
                 }
                 ExportProgressItem::Error(cause) => {
-                    // pb.finish_and_clear();
                     anyhow::bail!("error exporting {}: {}", name, cause);
                 }
             }
         }
     }
-    mess.complete("Export").await?;
+    mess.progress_complete("Export").await?;
     Ok(())
 }
 
