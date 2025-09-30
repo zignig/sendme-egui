@@ -89,7 +89,7 @@ impl MessageOut {
         Ok(())
     }
 
-    pub async fn correct(&self, message: &str) -> Result<()> {
+    pub async fn good(&self, message: &str) -> Result<()> {
         self.emit(Event::Message(MessageDisplay {
             text: message.to_string(),
             mtype: MessageType::Good,
@@ -135,16 +135,19 @@ impl MessageOut {
         Ok(())
     }
 
+    // Send a clock update , show the clock in the gui
     pub async fn tick(&self, since: u64) -> Result<()> {
         self.emit(Event::Tick(since)).await?;
         Ok(())
     }
 
+    // Stop showing clock in the gui.
     pub async fn reset_timer(&self) -> Result<()> {
         self.emit(Event::StopTick).await?;
         Ok(())
     }
 
+    // Send the ticket up to the gui.
     pub async fn send_ticket(&self, ticket: String) -> Result<()> { 
         self.emit(Event::SendTicket(ticket)).await?;
         Ok(())
@@ -260,4 +263,5 @@ impl ProgressList {
     pub fn clear(&mut self) {
         self.bars = BTreeMap::new();
     }
+    
 }

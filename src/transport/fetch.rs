@@ -54,7 +54,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
         let (stats, total_files, payload_size) = if !local.is_complete() {
             mess.info("Unfinished Download...").await?;
             let connection = endpoint.connect(addr, iroh_blobs::protocol::ALPN).await?;
-            mess.correct("Connection Established").await?;
+            mess.good("Connection Established").await?;
             let (_hash_seq, sizes) =
                 get_hash_seq_and_sizes(&connection, &hash_and_format.hash, 1024 * 1024 * 32, None)
                     .await?;
@@ -81,7 +81,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
                             .await?;
                     }
                     GetProgressItem::Done(value) => {
-                        mess.correct("Done").await?;
+                        mess.good("Done").await?;
                         mess.progress_complete("Download").await?;
                         mess.info(
                             format!(
@@ -106,7 +106,7 @@ pub async fn receive(ticket: String, target: PathBuf, mess: MessageOut, db: FsSt
             (stats, total_files, payload_size)
         } else {
             // Have it already , just say yes.
-            mess.correct("Blob is complete and local!").await?;
+            mess.good("Blob is complete and local!").await?;
             let total_files = local.children().unwrap() - 1;
             let payload_bytes = 0;
             (Stats::default(), total_files, payload_bytes)

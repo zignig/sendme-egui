@@ -112,7 +112,7 @@ impl Worker {
                 // lodge the redraw callback into the message updater
                 let _ = self.mess.set_callback(callback).await?;
                 // Say ready
-                self.mess.correct("Ready...").await?;
+                self.mess.good("Ready...").await?;
                 // Show exisiting tags for later work ( replication worker , not yet)
                 let mut tags = self.store.tags().list().await.unwrap();
                 while let Some(event) = tags.next().await {
@@ -129,7 +129,7 @@ impl Worker {
                 // This notify will make the send exit
                 let notify = self.send_notify.clone();
                 // run in the background
-                self.mess.correct("Start Send").await?;
+                self.mess.good("Start Send").await?;
                 let _ = tokio::spawn(async move {
                     if let Err(out) = send(path, mess.clone(), store, notify).await {
                         println!("{:#?}", out);

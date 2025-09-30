@@ -194,6 +194,7 @@ impl AppState {
                 send_enabled = false;
             }
         }
+        
         // The actual gui
 
         // Status bar at the bottom
