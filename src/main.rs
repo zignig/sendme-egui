@@ -7,6 +7,7 @@ mod app;
 mod comms;
 mod worker;
 mod transport;
+mod about;
 
 use app::App;
 use eframe::NativeOptions;

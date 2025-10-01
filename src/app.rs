@@ -4,6 +4,7 @@ use core::f32;
 use std::fmt::Display;
 use std::path::PathBuf;
 
+use crate::about::ABOUT;
 use crate::comms::{Command, Config, Event, MessageDisplay, MessageType, ProgressList};
 use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
@@ -58,6 +59,7 @@ enum AppMode {
     FetchProgess,
     Finished,
     Config,
+    About,
 }
 
 impl Display for AppMode {
@@ -70,6 +72,7 @@ impl Display for AppMode {
             AppMode::FetchProgess => "Fetch Running...",
             AppMode::Finished => "Finished",
             AppMode::Config => "Config",
+            AppMode::About => "About...",
         };
         write!(f, "{}", val)
     }
@@ -267,6 +270,10 @@ impl AppState {
                     }
                 };
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("About").clicked() {
+                        self.mode = AppMode::About;
+                    }
+                    ui.add_space(10.);
                     if ui.button("Config").clicked() {
                         self.mode = AppMode::Config;
                     }
@@ -312,6 +319,7 @@ impl AppState {
             AppMode::Config => {
                 self.show_config(ui);
             }
+            AppMode::About => self.about(ui),
         }
     }
 
@@ -332,7 +340,6 @@ impl AppState {
             _ => {}
         }
     }
-
 
     // Show the config editor ,  needs a restart to work
     fn show_config(&mut self, ui: &mut Ui) {
@@ -369,6 +376,18 @@ impl AppState {
             // Push the config down to the worker
             self.cmd(Command::SendConfig(self.config.clone()));
             // Set idle
+            self.mode = AppMode::Idle;
+        }
+    }
+
+    // About panel
+    fn about(&mut self, ui: &mut Ui) {
+        ui.label(ABOUT);
+        ui.add_space(10.);
+        let _ = ui.hyperlink("https://github.com/zignig/sendme-egui");
+        ui.add_space(10.);
+        ui.separator();
+        if ui.button("Awesome!").clicked() {
             self.mode = AppMode::Idle;
         }
     }
