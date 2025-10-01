@@ -189,6 +189,7 @@ impl AppState {
                 send_enabled = false;
             }
             AppMode::Finished => {
+                self.cmd(Command::ResetTimer);
                 self.mode = AppMode::Idle;
             }
             AppMode::Config => {
@@ -198,7 +199,7 @@ impl AppState {
         }
 
         // The actual gui
-
+        // the lower panel
         self.footer(ctx);
 
         // Main panel
@@ -273,7 +274,6 @@ impl AppState {
                     if ui.button("About").clicked() {
                         self.mode = AppMode::About;
                     }
-                    ui.add_space(10.);
                     if ui.button("Config").clicked() {
                         self.mode = AppMode::Config;
                     }
@@ -334,7 +334,7 @@ impl AppState {
                     // to finish the send endpoint
                     self.cmd(Command::CancelSend);
                     self.send_ticket = None;
-                    self.mode = AppMode::Idle;
+                    self.mode = AppMode::Finished;
                 }
             }
             _ => {}
