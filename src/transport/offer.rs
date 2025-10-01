@@ -8,7 +8,10 @@ use anyhow::Context;
 use anyhow::Result;
 use chrono::Local;
 use futures_buffered::BufferedStreamExt;
+use humansize::DECIMAL;
+use humansize::format_size;
 use iroh::Endpoint;
+use iroh::PublicKey;
 use iroh::RelayMode;
 use iroh::Watcher;
 use iroh::discovery::dns::DnsDiscovery;
@@ -26,6 +29,7 @@ use iroh_blobs::ticket::BlobTicket;
 use n0_future::StreamExt;
 use n0_future::task::AbortOnDropHandle;
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
@@ -35,8 +39,6 @@ use tokio::sync::mpsc;
 use tracing::info;
 use tracing::trace;
 use walkdir::WalkDir;
-
-// TODO , show the progress bars for the clients
 
 pub async fn send(
     path: PathBuf,
@@ -54,7 +56,7 @@ pub async fn send(
         .await?;
 
     // Create the endpoint.
-    // TODO move this up into the worker as an Option , create on demand
+    // LATER move this up into the worker as an Option , create on demand
     let secret_key = super::get_or_create_secret()?;
     let builder = Endpoint::builder()
         .alpns(vec![iroh_blobs::protocol::ALPN.to_vec()])
@@ -243,6 +245,13 @@ pub fn canonicalized_path_to_string(
     Ok(path_str)
 }
 
+// Show the progress of the send
+#[derive(Debug)]
+struct PerConnectionProgress {
+    node_id: PublicKey,
+    requests: BTreeMap<u64, u64>,
+}
+
 async fn show_provide_progress(
     mess: MessageOut,
     mut recv: mpsc::Receiver<provider::Event>,
@@ -257,41 +266,88 @@ async fn show_provide_progress(
                 permitted,
             } => {
                 permitted.send(true).await.ok();
-                info!("connection {}", &connection_id);
-                connections.insert(connection_id, (0, 0));
+                info!("connection {}", &node_id);
+                // Map the connections
+                connections.insert(
+                    connection_id,
+                    PerConnectionProgress {
+                        node_id,
+                        requests: BTreeMap::new(),
+                    },
+                );
+                mess.good(format!("Request from {}", node_id.fmt_short()).as_str())
+                    .await?;
             }
+
             Event::ConnectionClosed { connection_id } => {
                 info!("closed {}", connection_id);
-                connections.remove(&connection_id);
+                if let Some(per_connection) = connections.get(&connection_id) {
+                    mess.good(
+                        format!("Finished from {}", per_connection.node_id.fmt_short()).as_str(),
+                    )
+                    .await?;
+                    connections.remove(&connection_id);
+                }
             }
+
             Event::GetRequestReceived {
                 connection_id,
                 request_id,
                 hash,
                 ..
             } => {
-                info!("get request {} {} ", connection_id, request_id);
+                info!("get request {} {} {}", connection_id, request_id, hash);
+                let Some(connection) = connections.get_mut(&connection_id) else {
+                    mess.error(format!("request for unknown connect {connection_id}").as_str())
+                        .await?;
+                    continue;
+                };
+                connection.requests.insert(request_id, u64::MAX);
             }
+
             Event::TransferStarted {
                 connection_id,
                 request_id,
-                hash,
                 size,
-                index,
+                ..
             } => {
-                info!(
-                    "transfer started {}  {} {} {} ",
-                    connection_id, request_id, size, index
-                );
+                // info!(
+                //     "transfer started {}  {} {} {} ",
+                //     connection_id, request_id, size, index
+                // );
+                let Some(connection) = connections.get_mut(&connection_id) else {
+                    mess.error(format!("request for unknown connection {connection_id}").as_str())
+                        .await?;
+                    continue;
+                };
+                connection.requests.insert(request_id, size);
             }
+
             Event::TransferProgress {
                 connection_id,
-                index,
+                request_id,
                 end_offset,
                 ..
             } => {
-                // info!("progress {} {} {} ", connection_id,index, end_offset);
+                // info!("progress {} {} ", connection_id, end_offset);
+                let Some(connection) = connections.get_mut(&connection_id) else {
+                    mess.error(format!("request for unknown connection {connection_id}").as_str())
+                        .await?;
+                    continue;
+                };
+                let Some(size) = connection.requests.get(&request_id) else {
+                    mess.error(format!("request for unknown connection {connection_id}").as_str())
+                        .await?;
+                    continue;
+                };
+                mess.progress(
+                    format!("{}", request_id).as_str(),
+                    end_offset as usize,
+                    *size as usize,
+                )
+                .await?;
             }
+
             Event::TransferCompleted {
                 connection_id,
                 request_id,
@@ -299,12 +355,15 @@ async fn show_provide_progress(
                 ..
             } => {
                 info!("completed {} {} ", connection_id, request_id);
+                mess.progress_finish(format!("{}", request_id).as_str())
+                    .await?;
+                mess.good(format!("bytes sent: {}",format_size(stats.payload_bytes_sent, DECIMAL)).as_str()).await?;
             }
-            Event::TransferAborted {
-                connection_id,
-                request_id,
-                ..
-            } => {}
+
+            Event::TransferAborted { connection_id, .. } => {
+                mess.error(format!("connection {connection_id} aborted").as_str())
+                    .await?;
+            }
             _ => {}
         }
     }

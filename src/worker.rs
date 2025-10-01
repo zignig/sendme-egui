@@ -4,7 +4,7 @@
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use crate::comms::{Command, Event, MessageOut};
+use crate::comms::{Command, Config, Event, MessageOut};
 use anyhow::Result;
 use async_channel::{Receiver, Sender};
 use iroh_blobs::store::fs::FsStore;
@@ -21,9 +21,9 @@ pub struct Worker {
     pub command_rx: Receiver<Command>,
     pub mess: MessageOut,
     pub timer_out: Sender<TimerCommands>,
-    // pub store_path: PathBuf,
     pub store: FsStore,
     pub send_notify: Arc<Notify>,
+    pub config: Config,
 }
 
 pub struct WorkerHandle {
@@ -32,7 +32,7 @@ pub struct WorkerHandle {
 }
 
 impl Worker {
-    pub fn spawn(store_path: PathBuf) -> WorkerHandle {
+    pub fn spawn(config: Config) -> WorkerHandle {
         let (command_tx, command_rx) = async_channel::bounded(16);
         let (event_tx, event_rx) = async_channel::bounded(16);
         let handle = WorkerHandle {
@@ -48,7 +48,7 @@ impl Worker {
                 .build()
                 .expect("failed to start tokio runtime");
             rt.block_on(async move {
-                let mut worker = Worker::start(command_rx, event_tx, store_path)
+                let mut worker = Worker::start(command_rx, event_tx, config)
                     .await
                     .expect("Worker failed to start");
                 if let Err(err) = worker.run().await {
@@ -63,7 +63,7 @@ impl Worker {
     async fn start(
         command_rx: async_channel::Receiver<Command>,
         event_tx: async_channel::Sender<Event>,
-        store_path: PathBuf,
+        config: Config,
     ) -> Result<Self> {
         let mess = MessageOut::new(event_tx.clone());
         // Channel for the timer
@@ -73,15 +73,15 @@ impl Worker {
         // Run the timer
         timer.run(timer_in);
         // Create the blob store
-        let store = iroh_blobs::store::fs::FsStore::load(&store_path).await?;
+        let store = iroh_blobs::store::fs::FsStore::load(&config.store_path).await?;
         // Make the worker
         Ok(Self {
             command_rx,
             mess,
             timer_out: timer_out,
-            // store_path,
             store,
             send_notify: Arc::new(Notify::new()),
+            config,
         })
     }
 
@@ -121,7 +121,6 @@ impl Worker {
                 }
                 return Ok(());
             }
-            // This needs commands to finish
             Command::Send(path) => {
                 self.start_timer().await?;
                 let store = self.store.clone();
@@ -135,12 +134,8 @@ impl Worker {
                         println!("{:#?}", out);
                     }
                 });
-                self.mess.info("End Send").await?;
-
                 return Ok(());
             }
-
-            // This is working.end with a UI reset.
             Command::Fetch((ticket, target)) => {
                 let target_path = PathBuf::from(target);
                 self.start_timer().await?;
@@ -156,12 +151,19 @@ impl Worker {
                 };
                 return Ok(());
             }
-
-            // Cancel the send if it is running
             Command::CancelSend => {
                 info!("Finish the send runner!!");
                 self.send_notify.notify_waiters();
                 self.reset_timer().await?;
+                return Ok(());
+            }
+            Command::ResetTimer => {
+                self.reset_timer().await?;
+                self.start_timer().await?;
+                return Ok(());
+            }
+            Command::SendConfig(config) => {
+                self.config = config;
                 return Ok(());
             }
         }
@@ -172,13 +174,13 @@ impl Worker {
     //------
 
     async fn start_timer(&mut self) -> Result<()> {
-        info!("Start Timer");
+        // info!("Start Timer");
         self.timer_out.send(TimerCommands::Start).await?;
         Ok(())
     }
 
     async fn reset_timer(&mut self) -> Result<()> {
-        info!("Stop timer");
+        // info!("Stop timer");
         self.timer_out.send(TimerCommands::Reset).await?;
         Ok(())
     }
@@ -215,7 +217,7 @@ impl TimerTask {
                 tokio::select! {
                     command  = incoming.recv() => {
                        let command = command.unwrap() ;
-                       info!("timer -- {:?}",command);
+                        //    info!("timer -- {:?}",command);
                        match command {
                         TimerCommands::Start => { start_time = Instant::now(); running = true;},
                         TimerCommands::Reset => { running = false ; let _ = mess.reset_timer().await; } ,

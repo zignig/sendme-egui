@@ -8,7 +8,17 @@ use async_channel::Sender;
 use eframe::egui::{self};
 
 use egui::{Color32, Ui};
+use serde_derive::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+
+// Application Configuration
+// Application saved config
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Config {
+    pub dark_mode: bool,
+    pub download_path: PathBuf,
+    pub store_path: PathBuf,
+}
 
 // Update Callback
 type UpdateCallback = Box<dyn Fn() + Send + 'static>;
@@ -30,12 +40,14 @@ pub enum Command {
     Setup { callback: UpdateCallback },
     Send(PathBuf),
     Fetch((String, PathBuf)),
-    CancelSend
+    SendConfig(Config),
+    ResetTimer,
+    CancelSend,
 }
 
 // Message types
 #[derive(Clone)]
-enum MessageType {
+pub enum MessageType {
     Good,
     Info,
     Error,
@@ -44,8 +56,8 @@ enum MessageType {
 // egui display struct
 #[derive(Clone)]
 pub struct MessageDisplay {
-    text: String,
-    mtype: MessageType,
+    pub text: String,
+    pub mtype: MessageType,
 }
 
 // Messaging
@@ -148,7 +160,7 @@ impl MessageOut {
     }
 
     // Send the ticket up to the gui.
-    pub async fn send_ticket(&self, ticket: String) -> Result<()> { 
+    pub async fn send_ticket(&self, ticket: String) -> Result<()> {
         self.emit(Event::SendTicket(ticket)).await?;
         Ok(())
     }
@@ -178,7 +190,6 @@ impl MessageDisplay {
     }
 }
 
-
 // --------
 // Progress Bars
 // --------
@@ -203,7 +214,7 @@ impl ProgressBar {
         };
         let mut progress_bar = egui::ProgressBar::new(prog_val)
             .show_percentage()
-            .desired_height(12.);
+            .desired_height(15.);
         if self.complete {
             progress_bar = progress_bar.fill(Color32::DARK_GREEN);
         }
@@ -263,5 +274,4 @@ impl ProgressList {
     pub fn clear(&mut self) {
         self.bars = BTreeMap::new();
     }
-    
 }

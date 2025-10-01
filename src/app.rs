@@ -4,7 +4,7 @@ use core::f32;
 use std::fmt::Display;
 use std::path::PathBuf;
 
-use crate::comms::{Command, Event, MessageDisplay, ProgressList};
+use crate::comms::{Command, Config, Event, MessageDisplay, MessageType, ProgressList};
 use crate::worker::{Worker, WorkerHandle};
 use anyhow::Result;
 use directories::{BaseDirs, UserDirs};
@@ -12,15 +12,10 @@ use eframe::NativeOptions;
 use eframe::egui::{self, FontId, RichText, Visuals};
 use egui::Ui;
 use rfd;
-use serde_derive::{Deserialize, Serialize};
 
-// Application saved config
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Config {
-    dark_mode: bool,
-    download_path: PathBuf,
-    store_path: PathBuf,
-}
+use tracing::info;
+
+const APP_NAME: &str = "sendme-egui";
 
 impl Default for Config {
     fn default() -> Self {
@@ -99,7 +94,9 @@ impl eframe::App for App {
         if self.is_first_update {
             self.is_first_update = false;
             ctx.set_zoom_factor(1.);
-            if !self.state.config.dark_mode {
+            if self.state.config.dark_mode {
+                ctx.set_visuals(Visuals::dark());
+            } else {
                 ctx.set_visuals(Visuals::light());
             };
             // Push the redraw function into the worker.
@@ -117,11 +114,12 @@ impl eframe::App for App {
 impl App {
     pub fn run(options: NativeOptions) -> Result<(), eframe::Error> {
         // Load the config
-        let config: Config = confy::load("sendme-egui", None).unwrap_or_default();
+        let config: Config = confy::load(APP_NAME, None).unwrap_or_default();
 
         // Start up the worker , separate thread , async runner
-        let handle = Worker::spawn(config.store_path.clone());
+        let handle = Worker::spawn(config.clone());
 
+        // Create a fresh application
         let state = AppState {
             picked_path: None,
             worker: handle,
@@ -134,6 +132,7 @@ impl App {
             elapsed: None,
         };
 
+        // New App
         let app = App {
             is_first_update: true,
             state,
@@ -160,6 +159,7 @@ impl AppState {
                     self.progress.insert(name, current, total);
                 }
                 Event::Finished => {
+                    self.cmd(Command::ResetTimer);
                     self.mode = AppMode::Finished;
                 }
                 Event::ProgressFinished(name) => self.progress.finish(name),
@@ -182,8 +182,6 @@ impl AppState {
             AppMode::Init => {
                 self.mode = AppMode::Idle;
             }
-            AppMode::Idle => {}
-            AppMode::Send => {}
             AppMode::SendProgress | AppMode::FetchProgess => {
                 send_enabled = false;
             }
@@ -193,33 +191,12 @@ impl AppState {
             AppMode::Config => {
                 send_enabled = false;
             }
+            _ => {}
         }
-        
+
         // The actual gui
 
-        // Status bar at the bottom
-        // egui needs outer things done first
-        // the status bar at the bottom.
-        egui::TopBottomPanel::bottom("status bar").show(ctx, |ui| {
-            ui.add_space(5.);
-            ui.horizontal(|ui| {
-                if ui.button("Reset").clicked() {
-                    self.reset();
-                }
-                if ui.button("Config").clicked() {
-                    self.mode = AppMode::Config;
-                }
-                ui.add_space(6.);
-                // mode and timer
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if let Some(elapsed_seconds) = self.elapsed {
-                        ui.label(format_seconds_as_hms(elapsed_seconds));
-                    }
-                    ui.label(format!(" {} ", self.mode));
-                });
-            });
-            ui.add_space(5.);
-        });
+        self.footer(ctx);
 
         // Main panel
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -228,17 +205,51 @@ impl AppState {
             ui.separator();
             ui.add_space(5.);
             self.button_header(send_enabled, ui);
-
+            // gap
             ui.separator();
             // Modal Display
-            self.modal_display(ui);
+            self.modal_display_above(ui);
             // Show the current progress bars
             self.show_progress(ui);
             // Show the current messages
             self.show_messages(ui);
+            // Lower modal display
+            self.modal_display_below(ui);
         });
     }
 
+    fn footer(&mut self, ctx: &egui::Context) {
+        // Status bar at the bottom
+        // egui needs outer things done first
+        // the status bar at the bottom.
+        egui::TopBottomPanel::bottom("status bar").show(ctx, |ui| {
+            ui.add_space(5.);
+            ui.horizontal(|ui| {
+                if ui.button("Clear").clicked() {
+                    // Clear and reset the interface
+                    // if we are in send mode drop the connection
+                    if self.mode == AppMode::SendProgress {
+                        self.cmd(Command::CancelSend);
+                    }
+                    // Reset the timer for good measure
+                    self.cmd(Command::ResetTimer);
+                    self.reset();
+                }
+                ui.add_space(5.);
+
+                // mode and timer
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if let Some(elapsed_seconds) = self.elapsed {
+                        ui.label(RichText::new(format_seconds_as_hms(elapsed_seconds)).strong());
+                    }
+                    ui.label(format!(" {} ", self.mode));
+                });
+            });
+            ui.add_space(5.);
+        });
+    }
+
+    // The buttons at the top
     fn button_header(&mut self, send_enabled: bool, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.add_space(2.);
@@ -255,11 +266,18 @@ impl AppState {
                         self.mode = AppMode::Send;
                     }
                 };
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Config").clicked() {
+                        self.mode = AppMode::Config;
+                    }
+                });
             });
+            ui.add_space(5.);
         });
     }
 
-    fn modal_display(&mut self, ui: &mut Ui) {
+    // modal display above progress and messages
+    fn modal_display_above(&mut self, ui: &mut Ui) {
         // Show mode based widgets
         match self.mode {
             AppMode::Init => {}
@@ -281,36 +299,81 @@ impl AppState {
                     ui.label("Blob Ticket...");
                     ui.add_space(5.);
                     ui.separator();
-                    ui.label(RichText::new(ticket).font(FontId::monospace(15.)));
+                    ui.add_space(10.);
+                    ui.label(RichText::new(ticket).strong().font(FontId::monospace(15.)));
+                    ui.add_space(10.);
                     ui.separator();
-                }
-
-                if ui.button("Finish").clicked() {
-                    // This activates a notify within the send system
-                    // to finish the send
-                    self.cmd(Command::CancelSend);
-                    self.mode = AppMode::Idle;
-                    // TODO clean and reset interfaces
                 }
             }
             AppMode::FetchProgess => {
                 ui.label("Fetching ...");
             }
-            AppMode::Finished => {
-                // self.reset();
-            }
+            AppMode::Finished => {}
             AppMode::Config => {
-                // config editor
-                ui.label("Configuration");
-                ui.checkbox(&mut self.config.dark_mode, "Darkmode");
-                ui.separator();
-                if ui.button("Save Config").clicked() {
-                    self.mode = AppMode::Idle;
-                }
+                self.show_config(ui);
             }
         }
     }
 
+    // Modal display below progress and messages
+    fn modal_display_below(&mut self, ui: &mut Ui) {
+        match self.mode {
+            AppMode::SendProgress => {
+                ui.add_space(10.);
+                ui.separator();
+                if ui.button("Finish").clicked() {
+                    // This activates a notify within the send system
+                    // to finish the send endpoint
+                    self.cmd(Command::CancelSend);
+                    self.send_ticket = None;
+                    self.mode = AppMode::Idle;
+                }
+            }
+            _ => {}
+        }
+    }
+
+
+    // Show the config editor ,  needs a restart to work
+    fn show_config(&mut self, ui: &mut Ui) {
+        // config editor
+        // LATER need a fall back config on cancel
+        ui.label("Configuration");
+        ui.add_space(5.);
+        ui.separator();
+        ui.small("Display Mode");
+        ui.checkbox(&mut self.config.dark_mode, "Darkmode");
+        ui.add_space(5.);
+        ui.small("Download Path");
+        ui.horizontal(|ui| {
+            ui.label(self.config.download_path.display().to_string());
+            if ui.button("Change").clicked() {
+                let mut new_path = rfd::FileDialog::new();
+                new_path = new_path.set_directory(self.config.download_path.as_path());
+                if let Some(path) = new_path.pick_folder() {
+                    info!("new export path {}", path.display().to_string());
+                    self.config.download_path = path;
+                }
+            }
+        });
+        ui.separator();
+
+        if ui.button("Save Config").clicked() {
+            let message = MessageDisplay {
+                text: "Config updated".to_string(),
+                mtype: MessageType::Good,
+            };
+            self.messages.push(message);
+            // Save the config to file
+            let _ = confy::store(APP_NAME, None, &self.config);
+            // Push the config down to the worker
+            self.cmd(Command::SendConfig(self.config.clone()));
+            // Set idle
+            self.mode = AppMode::Idle;
+        }
+    }
+
+    // Show the blob ticket fetch box
     fn fetch_box(&mut self, ui: &mut Ui) {
         ui.label("Fetch blob with ticket...");
         ui.add_space(8.);
@@ -320,6 +383,7 @@ impl AppState {
         ui.add_space(5.);
         ui.horizontal(|ui| {
             if ui.button("Fetch").clicked() {
+                // Fetch to the default path
                 self.cmd(Command::Fetch((
                     self.receiver_ticket.clone(),
                     self.config.download_path.clone(),
@@ -327,6 +391,7 @@ impl AppState {
                 self.mode = AppMode::FetchProgess;
             };
             if ui.button("Fetch Into...").clicked() {
+                // Fetch to a custom path
                 if let Some(path) = rfd::FileDialog::new().pick_folder() {
                     self.picked_path = Some(path.clone());
                     self.cmd(Command::Fetch((self.receiver_ticket.clone(), path.clone())));
